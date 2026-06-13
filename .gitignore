@@ -1,0 +1,16 @@
+# Hidden directories
+charactor/
+.claude/
+gif/
+
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+
+# Large source assets (optional, comment out if you want to track)
+# muziki-refiined.png
+# muziki.jpg
+# muziki_nobg.png
+# board.jpg

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>State Process Editor</title>
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:;">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <span id="toolbar-title">State Process Editor</span>
+    <div id="toolbar-btns">
+      <button class="btn" id="btn-import">📥 导入</button>
+      <button class="btn" id="btn-export">📤 导出</button>
+      <button class="btn" id="btn-save">💾 保存</button>
+      <button class="btn btn-apply" id="btn-apply">▶ 应用执行</button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Canvas -->
+    <div id="canvas-wrapper">
+      <svg id="svg-arrows" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr-end" markerWidth="8" markerHeight="6"
+                  refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.2)"/>
+          </marker>
+          <marker id="arr-start" markerWidth="8" markerHeight="6"
+                  refX="1" refY="3" orient="auto-start-reverse">
+            <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.2)"/>
+          </marker>
+        </defs>
+      </svg>
+      <div id="canvas"></div>
+    </div>
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+
+      <div class="sidebar-section">
+        <div class="sidebar-title">Clip 库</div>
+        <div id="lib-list"></div>
+        <button class="btn" id="btn-add-clip" style="width:100%;font-size:12px">
+          + 添加自定义 Clip
+        </button>
+        <button class="btn" id="btn-add-state" style="width:100%;font-size:12px;margin-top:6px">
+          + 新增自定义状态
+        </button>
+      </div>
+
+      <div id="prop-section" class="hidden">
+        <div class="prop-title">Clip 属性</div>
+        <span id="prop-clip-id" class="prop-clip-id"></span>
+
+        <label class="prop-label">FPS（每秒帧数）</label>
+        <input type="number" id="prop-fps" class="prop-input"
+               min="0.5" max="30" step="0.1">
+
+        <label class="prop-label">
+          <div style="display:flex;align-items:center;gap:6px">
+            三段式 Intro / Loop / Outro
+            <button class="help-btn" id="btn-help" title="说明">?</button>
+          </div>
+        </label>
+        <div class="toggle-row">
+          <input type="checkbox" id="prop-threephase">
+          <span>启用三段式</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Help tooltip -->
+  <div id="help-tooltip" class="hidden">
+    <div class="help-title">三段式动画说明</div>
+    <div class="help-row">
+      <b>intro（入场）</b>：第 1 帧，进入此动作状态时播放一次，之后不再重复
+    </div>
+    <div class="help-row">
+      <b>loop（循环）</b>：第 2 帧至倒数第 2 帧，持续循环播放，直到状态需要切换
+    </div>
+    <div class="help-row">
+      <b>outro（出场）</b>：最后 1 帧，状态切换时播放一次，播完后才进入下一状态
+    </div>
+    <div class="help-note">
+      关闭三段式后：所有帧直接顺序循环，无出入场过渡效果
+    </div>
+  </div>
+
+  <div id="status-bar"></div>
+
+  <script src="editor.js"></script>
+</body>
+</html>

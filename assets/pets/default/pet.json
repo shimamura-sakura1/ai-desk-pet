@@ -1,0 +1,17 @@
+{
+  "name": "muziki",
+  "version": "1.0.0",
+  "size": { "width": 219, "height": 155 },
+  "defaultState": "sleep",
+  "states": {
+    "sleep":          { "frames": ["row_3_frame_1.png","row_3_frame_2.png","row_3_frame_3.png","row_3_frame_4.png","row_3_frame_5.png","row_3_frame_6.png","row_3_frame_7.png"], "fps": 2,  "loop": true,  "priority": 0 },
+    "act":            { "frames": ["row_4_frame_1.png","row_4_frame_2.png","row_4_frame_3.png","row_4_frame_4.png","row_4_frame_5.png","row_4_frame_6.png","row_4_frame_7.png"], "fps": 4,  "loop": true,  "priority": 10 },
+    "thinking":       { "frames": ["row_2_frame_1.png","row_2_frame_2.png","row_2_frame_3.png","row_2_frame_4.png","row_2_frame_5.png","row_2_frame_6.png","row_2_frame_7.png"], "fps": 3,  "loop": true,  "priority": 20 },
+    "dance":          { "frames": ["row_6_frame_1.png","row_6_frame_2.png","row_6_frame_3.png","row_6_frame_4.png","row_6_frame_5.png","row_6_frame_6.png","row_6_frame_7.png"], "fps": 5,  "loop": false, "priority": 5,   "onEnd": "sleep" },
+    "require_action": { "frames": ["row_5_frame_1.png","row_5_frame_2.png","row_5_frame_3.png","row_5_frame_4.png","row_5_frame_5.png","row_5_frame_6.png","row_5_frame_7.png","row_5_frame_6.png","row_5_frame_5.png","row_5_frame_4.png","row_5_frame_3.png","row_5_frame_2.png"], "fps": 3,  "loop": true,  "priority": 100 },
+    "alert":          { "frames": ["row_5_frame_1.png","row_5_frame_2.png","row_5_frame_3.png"], "fps": 3,  "loop": true,  "priority": 80 },
+    "success":        { "frames": ["row_6_frame_1.png","row_6_frame_2.png","row_6_frame_3.png","row_6_frame_4.png"], "fps": 5,  "loop": false, "priority": 50,  "onEnd": "sleep" },
+    "dragged":        { "frames": ["row_7_frame_1.png","row_7_frame_2.png","row_7_frame_3.png","row_7_frame_4.png","row_7_frame_5.png","row_7_frame_6.png","row_7_frame_7.png"], "fps": 4,  "loop": true,  "priority": 90 },
+    "poked":          { "frames": ["row_1_frame_1.png","row_1_frame_2.png","row_1_frame_3.png","row_1_frame_4.png","row_1_frame_5.png","row_1_frame_6.png","row_1_frame_7.png"], "fps": 4,  "loop": false, "priority": 30,  "onEnd": "sleep" }
+  }
+}

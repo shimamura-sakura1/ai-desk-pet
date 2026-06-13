@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:;">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: transparent; overflow: hidden; width: 219px; height: 155px; user-select: none; }
+    #stage {
+      position: relative;
+      width: 219px;
+      height: 155px;
+    }
+    .pet-layer {
+      position: absolute;
+      top: 0; left: 0;
+      width: 219px;
+      height: 155px;
+      object-fit: contain;
+      object-position: center bottom;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: pointer;
+      -webkit-user-drag: none;
+      transition: opacity 0.15s ease;
+    }
+    #petA { opacity: 1; }
+    #petB { opacity: 0; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <img id="petA" class="pet-layer" src="" alt="" draggable="false">
+    <img id="petB" class="pet-layer" src="" alt="" draggable="false">
+  </div>
+  <script src="engine.js"></script>
+</body>
+</html>

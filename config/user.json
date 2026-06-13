@@ -1,0 +1,42 @@
+{
+  "activePreset": "default",
+  "pet": {
+    "activePet": "default",
+    "size": 120
+  },
+  "monitor": {
+    "localLogDir": "",
+    "pollIntervalMs": 2000
+  },
+  "board": {
+    "maxSessions": 3
+  },
+  "actions": [
+    {
+      "id": "idle",
+      "name": "待机",
+      "folder": ""
+    },
+    {
+      "id": "bored",
+      "name": "无聊",
+      "folder": ""
+    },
+    {
+      "id": "done",
+      "name": "工作结束",
+      "folder": ""
+    },
+    {
+      "id": "drag",
+      "name": "鼠标点击拖动",
+      "folder": ""
+    },
+    {
+      "id": "working",
+      "name": "工作中",
+      "folder": ""
+    }
+  ],
+  "ssh": []
+}

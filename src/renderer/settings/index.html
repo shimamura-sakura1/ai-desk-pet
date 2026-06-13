@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>桌宠设置</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      font-size: 14px;
+    }
+    .tabs {
+      display: flex;
+      background: #181825;
+      border-bottom: 1px solid #313244;
+    }
+    .tab {
+      padding: 12px 24px;
+      cursor: pointer;
+      color: #6c7086;
+      border-bottom: 2px solid transparent;
+      transition: color .2s, border-color .2s;
+    }
+    .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+    .panel { display: none; padding: 24px; }
+    .panel.active { display: block; }
+    label { display: block; margin-bottom: 4px; color: #a6adc8; font-size: 13px; }
+    input, select {
+      width: 100%;
+      padding: 8px 12px;
+      background: #313244;
+      border: 1px solid #45475a;
+      border-radius: 6px;
+      color: #cdd6f4;
+      font-size: 14px;
+      margin-bottom: 16px;
+      outline: none;
+    }
+    input:focus { border-color: #cba6f7; }
+    .field { margin-bottom: 4px; }
+    .btn {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: opacity .2s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: #cba6f7; color: #1e1e2e; font-weight: 600; }
+    .btn-secondary { background: #45475a; color: #cdd6f4; }
+    .ssh-list { margin-bottom: 16px; }
+    .ssh-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #313244;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .ssh-item .name { font-weight: 500; }
+    .ssh-item .host { font-size: 12px; color: #6c7086; margin-top: 2px; }
+    .ssh-item .del { background: none; border: none; color: #f38ba8; cursor: pointer; font-size: 16px; }
+    .status { margin-top: 8px; font-size: 13px; min-height: 20px; }
+    .status.ok { color: #a6e3a1; }
+    .status.err { color: #f38ba8; }
+    .row { display: flex; gap: 12px; align-items: flex-end; }
+    .row > div { flex: 1; }
+    h3 { margin-bottom: 16px; font-size: 15px; color: #cba6f7; }
+    hr { border: none; border-top: 1px solid #313244; margin: 20px 0; }
+    .hint { font-size: 12px; color: #6c7086; margin-bottom: 18px; line-height: 1.6; }
+    .action-row {
+      display: flex; flex-direction: column; gap: 6px;
+      background: #1e1e2e; border: 1px solid #313244;
+      border-radius: 8px; padding: 12px 14px; margin-bottom: 8px;
+    }
+    .action-header { display: flex; align-items: center; gap: 10px; }
+    .action-order-btns { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+    .btn-order {
+      width: 20px; height: 18px; padding: 0;
+      background: #313244; border: 1px solid #45475a; border-radius: 3px;
+      color: #a6adc8; font-size: 10px; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; line-height: 1;
+    }
+    .btn-order:hover { background: #45475a; }
+    .btn-order:disabled { opacity: 0.3; cursor: default; }
+    .action-name-tag {
+      font-size: 13px; font-weight: 600; color: #cdd6f4;
+      min-width: 90px;
+    }
+    .action-path-row { display: flex; gap: 8px; align-items: center; }
+    .action-path-row input {
+      flex: 1; margin-bottom: 0; font-size: 12px;
+      color: #a6adc8; background: #181825;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .btn-browse { white-space: nowrap; flex-shrink: 0; }
+    .action-path-clear {
+      background: none; border: none; color: #6c7086; cursor: pointer;
+      font-size: 16px; padding: 0 2px; flex-shrink: 0;
+    }
+    .action-path-clear:hover { color: #f38ba8; }
+  </style>
+</head>
+<body>
+  <div class="tabs">
+    <div class="tab active" data-panel="monitor">监控</div>
+    <div class="tab" data-panel="ssh">SSH 远程</div>
+    <div class="tab" data-panel="pet">桌宠</div>
+    <div class="tab" data-panel="actions">动作设置</div>
+  </div>
+
+  <!-- 监控设置 -->
+  <div id="panel-monitor" class="panel active">
+    <h3>本地监控</h3>
+    <div class="field"><label>Claude Code 日志目录（留空使用默认 ~/.claude/projects）</label>
+      <input id="localLogDir" type="text" placeholder="留空自动检测"></div>
+    <div class="field"><label>轮询间隔（毫秒）</label>
+      <input id="pollInterval" type="number" value="2000" min="500"></div>
+    <button class="btn btn-primary" id="btn-save-monitor">保存</button>
+    <div class="status" id="status-monitor"></div>
+  </div>
+
+  <!-- SSH 设置 -->
+  <div id="panel-ssh" class="panel">
+    <h3>已添加的远程机器</h3>
+    <div class="ssh-list" id="ssh-list"></div>
+    <hr>
+    <h3>添加新机器</h3>
+    <div class="row">
+      <div><label>别名</label><input id="ssh-name" placeholder="我的服务器"></div>
+      <div><label>Host</label><input id="ssh-host" placeholder="192.168.1.100"></div>
+      <div style="flex:0.4"><label>Port</label><input id="ssh-port" type="number" value="22"></div>
+    </div>
+    <div class="row">
+      <div><label>用户名</label><input id="ssh-user" placeholder="ubuntu"></div>
+      <div><label>密码</label><input id="ssh-pass" type="password" placeholder="（或使用私钥）"></div>
+    </div>
+    <div style="display:flex;gap:12px">
+      <button class="btn btn-secondary" id="btn-test-ssh">测试连接</button>
+      <button class="btn btn-primary" id="btn-add-ssh">添加</button>
+    </div>
+    <div class="status" id="status-ssh"></div>
+  </div>
+
+  <!-- 桌宠设置 -->
+  <div id="panel-pet" class="panel">
+    <h3>桌宠外观</h3>
+    <label>当前皮肤</label>
+    <select id="pet-skin"><option value="default">默认虎宠</option></select>
+    <label>尺寸（px）</label>
+    <input id="pet-size" type="number" value="120" min="80" max="240">
+    <button class="btn btn-primary" id="btn-save-pet">保存</button>
+  </div>
+
+  <!-- 动作设置 -->
+  <div id="panel-actions" class="panel">
+    <h3>动作帧设置</h3>
+    <p class="hint">为每个动作指定存放帧图片的文件夹，留空则使用内置默认帧。<br>可用上下箭头调整动作优先级顺序。</p>
+    <div id="action-list"></div>
+    <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary" id="btn-save-actions">保存</button>
+      <button class="btn btn-secondary" id="btn-open-editor"
+              style="display:flex;align-items:center;gap:6px">
+        🎬 打开流程编辑器
+      </button>
+      <div class="status" id="status-actions"></div>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>
