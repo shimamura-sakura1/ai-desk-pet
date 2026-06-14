@@ -45,11 +45,21 @@ function decodeProjectPath(encodedDirName) {
   return dfs([], 0);
 }
 
-function setupIPC({ getPetWindow, getBoardWindow, createBoardWindow, createSettingsWindow, createStateEditorWindow }) {
+function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, createBoardWindow, createDebugPetWindow, createSettingsWindow, createStateEditorWindow, onSSHCredsChanged }) {
   ipcMain.on('open-settings',      () => createSettingsWindow());
   ipcMain.on('open-state-editor',  () => createStateEditorWindow());
 
   ipcMain.on('pet:toggle-board', () => createBoardWindow());
+
+  ipcMain.on('open-debug-pet',  (_e, state) => createDebugPetWindow(state ?? null));
+  ipcMain.on('close-debug-pet', () => {
+    const dw = getDebugPetWindow?.();
+    if (dw && !dw.isDestroyed()) dw.close();
+  });
+  ipcMain.on('pet:force-clip', (_e, clipId) => {
+    const dw = getDebugPetWindow?.();
+    if (dw && !dw.isDestroyed()) dw.webContents.send('pet:force-clip', clipId);
+  });
 
   ipcMain.handle('get-user-config', () =>
     JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8')));
@@ -157,7 +167,11 @@ function setupIPC({ getPetWindow, getBoardWindow, createBoardWindow, createSetti
 
   // SSH credentials — stored in ~/.ai-desk-pet/credentials.json (outside git)
   ipcMain.handle('get-ssh-creds', () => readSSHCreds());
-  ipcMain.handle('save-ssh-creds', (_e, creds) => { writeSSHCreds(creds); return true; });
+  ipcMain.handle('save-ssh-creds', (_e, creds) => {
+    writeSSHCreds(creds);
+    onSSHCredsChanged?.();
+    return true;
+  });
 
   ipcMain.on('open-session-file', (_e, filePath) => {
     shell.showItemInFolder(filePath);
@@ -200,8 +214,8 @@ function setupIPC({ getPetWindow, getBoardWindow, createBoardWindow, createSetti
   });
 
   ipcMain.on('pet:force-state', (_e, state) => {
-    const pw = getPetWindow();
-    if (pw && !pw.isDestroyed()) pw.webContents.send('pet:force-state', state);
+    const dw = getDebugPetWindow?.();
+    if (dw && !dw.isDestroyed()) dw.webContents.send('pet:force-state', state);
   });
 
   ipcMain.on('pet:move', (_e, { x, y }) => {

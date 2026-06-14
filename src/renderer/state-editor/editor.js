@@ -648,6 +648,7 @@ document.getElementById('btn-apply').addEventListener('click', async () => {
 // ── Debug panel ───────────────────────────────────────────────
 
 let _debugActiveState = null;
+let _debugActiveClip  = null;
 
 function renderDebugPanel() {
   const list = document.getElementById('debug-state-list');
@@ -664,7 +665,7 @@ function renderDebugPanel() {
 
     const clipListHtml = isActive && clips.length > 0 ? `
       <div class="debug-clip-list">
-        ${clips.map(cid => `<div class="debug-clip-item">${esc(cid)}</div>`).join('')}
+        ${clips.map(cid => `<div class="debug-clip-item${_debugActiveClip === cid ? ' debug-clip-active' : ''}" data-cid="${esc(cid)}">${esc(cid)}</div>`).join('')}
       </div>` : '';
 
     return `
@@ -684,18 +685,34 @@ function renderDebugPanel() {
     btn.addEventListener('click', () => {
       const sid = btn.dataset.sid;
       _debugActiveState = _debugActiveState === sid ? null : sid;
+      _debugActiveClip  = null;
       document.getElementById('btn-debug-exit').style.display = _debugActiveState ? '' : 'none';
       renderDebugPanel();
-      window.petBridge.forceState(_debugActiveState);
+      if (_debugActiveState) {
+        window.petBridge.openDebugPet(_debugActiveState);
+      } else {
+        window.petBridge.forceState(null);
+      }
+    });
+  });
+
+  list.querySelectorAll('.debug-clip-item').forEach(item => {
+    item.addEventListener('click', e => {
+      e.stopPropagation();
+      _debugActiveClip = item.dataset.cid;
+      renderDebugPanel();
+      window.petBridge.forceClip(_debugActiveClip);
     });
   });
 }
 
 document.getElementById('btn-debug-exit').addEventListener('click', () => {
   _debugActiveState = null;
+  _debugActiveClip  = null;
   document.getElementById('btn-debug-exit').style.display = 'none';
   renderDebugPanel();
   window.petBridge.forceState(null);
+  window.petBridge.closeDebugPet();
 });
 
 // ── Init ─────────────────────────────────────────────────────

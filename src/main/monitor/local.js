@@ -133,7 +133,7 @@ class LocalMonitor extends EventEmitter {
         nextState = 'thinking';
         const clean = text.trim();
         if (clean && !clean.startsWith('<')) {
-          if (session.name === 'Session') session.name = clean.slice(0, 40);
+          session.name = clean.slice(0, 40).replace(/\n/g, ' ');
           msg = clean.slice(0, 80).replace(/\n/g, ' ');
         }
       }
@@ -150,11 +150,15 @@ class LocalMonitor extends EventEmitter {
     if (msg !== null) session.lastMessage = msg;
     session.lastActiveAt = Date.now();
     clearTimeout(session.inactivityTimer);
-    session.inactivityTimer = setTimeout(() => {
-      session.state = 'sleep';
-      session.lastMessage = '';
-      this._emitUpdate();
-    }, INACTIVITY_MS);
+    // require_action / replied need user response — don't auto-sleep them.
+    // Only set inactivity timer for working states (thinking/act).
+    if (nextState !== 'require_action' && nextState !== 'alert' && nextState !== 'replied') {
+      session.inactivityTimer = setTimeout(() => {
+        session.state = 'sleep';
+        session.lastMessage = '';
+        this._emitUpdate();
+      }, INACTIVITY_MS);
+    }
     return true;
   }
 
@@ -164,57 +168,46 @@ class LocalMonitor extends EventEmitter {
     const project = projectDir.replace(/^-Users-[^-]+-/, '') || projectDir;
     const id = path.basename(filePath, '.jsonl');
 
-    // 尝试从日志读取第一条用户消息作为名称
-    let name = project.split('/').pop() || 'Session';
+    let createdAt   = null;
+    let lastActiveAt = null;
     try {
-      const first = fs.readFileSync(filePath, 'utf8').split('\n').slice(0, 20);
-      for (const line of first) {
-        try {
-          const e = JSON.parse(line);
-          if (e.type === 'user' && e.toolUseResult === undefined) {
-            const c = e.message?.content;
-            const text = typeof c === 'string' ? c
-              : Array.isArray(c) ? c.find(x => x.type === 'text')?.text ?? '' : '';
-            const clean = text.trim();
-            // 跳过系统注入的 XML 标签行（如 <local-command-caveat>）
-            if (clean && !clean.startsWith('<')) {
-              name = clean.slice(0, 40).replace(/\n/g, ' ');
-              break;
-            }
-          }
-        } catch {}
-      }
+      const st = fs.statSync(filePath);
+      createdAt    = st.birthtimeMs;
+      lastActiveAt = st.mtimeMs;
     } catch {}
 
-    let createdAt = null;
-    try { createdAt = fs.statSync(filePath).birthtimeMs; } catch {}
-
-    // Seed lastMessage from the most recent assistant/user text in the file
+    // Seed name from the most recent user question, and lastMessage from the most recent entry
+    let name        = project.split('/').pop() || 'Session';
     let lastMessage = '';
+    let nameDone    = false;
     try {
       const allLines = fs.readFileSync(filePath, 'utf8').split('\n').filter(l => l.trim());
-      for (const line of allLines.slice(-15).reverse()) {
+      for (const line of allLines.slice(-20).reverse()) {
         try {
           const e = JSON.parse(line);
           if (e.type === 'assistant') {
             const c = e.message?.content;
-            if (Array.isArray(c) && !c.some(x => x.type === 'tool_use')) {
+            if (!lastMessage && Array.isArray(c) && !c.some(x => x.type === 'tool_use')) {
               const t = c.find(x => x.type === 'text');
-              if (t?.text) { lastMessage = t.text.slice(0, 80).replace(/\n/g, ' ') + '…'; break; }
+              if (t?.text) lastMessage = t.text.slice(0, 80).replace(/\n/g, ' ') + '…';
             }
           } else if (e.type === 'user' && e.toolUseResult === undefined) {
             const c = e.message?.content;
             const text = typeof c === 'string' ? c
               : Array.isArray(c) ? (c.find(x => x.type === 'text')?.text ?? '') : '';
             const clean = text.trim();
-            if (clean && !clean.startsWith('<')) { lastMessage = clean.slice(0, 80).replace(/\n/g, ' '); break; }
+            if (clean && !clean.startsWith('<')) {
+              if (!lastMessage) lastMessage = clean.slice(0, 80).replace(/\n/g, ' ');
+              if (!nameDone) { name = clean.slice(0, 40).replace(/\n/g, ' '); nameDone = true; }
+            }
           }
         } catch {}
+        if (lastMessage && nameDone) break;
       }
     } catch {}
 
     return { id, name, project, state: 'sleep', lastMessage, filePath,
-             inactivityTimer: null, createdAt, lastActiveAt: null, messageCount: 0 };
+             inactivityTimer: null, createdAt, lastActiveAt, messageCount: 0 };
   }
 
   _findJsonl(dir) {
@@ -244,12 +237,13 @@ class LocalMonitor extends EventEmitter {
     //   4. Otherwise → sleep
     const states = sessions.map(s => s.state);
     let globalState = 'sleep';
-    // Priority: attention (needs permission) > working (active) > done (replied/finished) > sleep
-    if (states.some(s => s === 'require_action' || s === 'alert')) {
+    // Priority: attention > working > done > sleep
+    // replied = Claude asked/responded, waiting for user → same priority as require_action
+    if (states.some(s => s === 'require_action' || s === 'alert' || s === 'replied')) {
       globalState = 'require_action';
     } else if (states.some(s => s === 'act' || s === 'thinking')) {
       globalState = 'act';
-    } else if (states.some(s => s === 'replied' || s === 'success')) {
+    } else if (states.some(s => s === 'success')) {
       globalState = 'success';
     }
     this.emit('state', globalState);

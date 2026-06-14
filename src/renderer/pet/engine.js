@@ -80,7 +80,9 @@ let _pending     = null;    // state to enter after current outro
 // ============================================================
 // DEBUG STATE OVERRIDE
 // ============================================================
+let _isDebugPet  = false;  // true when this window is the isolated debug preview
 let _debugState  = null;   // when set, overrides normal state machine
+let _debugClipId = null;   // when set via forceClip, plays a single specific clip
 let _debugSeqIdx = 0;      // which clip to play next (sequential)
 let _debugTimer  = null;
 
@@ -123,6 +125,7 @@ function _debugAdvance() {
 }
 
 function _pickClip(stateName) {
+  if (_debugState === '__clip__') return _debugClipId;
   const list = _preset?.states?.[stateName]?.clips ?? [];
   if (!list.length) return null;
   if (_debugState === stateName) {
@@ -286,11 +289,11 @@ function _beginDrag() {
 
 stage.addEventListener('contextmenu', e => {
   e.preventDefault();
-  window.petBridge.openSettings();
+  if (!_isDebugPet) window.petBridge.openSettings();
 });
 
 stage.addEventListener('mousedown', e => {
-  if (e.button !== 0) return;
+  if (_isDebugPet || e.button !== 0) return;
   _mouseDownX = e.screenX; _mouseDownY = e.screenY;
   _offX = e.screenX - window.screenX;
   _offY = e.screenY - window.screenY;
@@ -298,6 +301,7 @@ stage.addEventListener('mousedown', e => {
 });
 
 window.addEventListener('mousemove', e => {
+  if (_isDebugPet) return;
   if (_isDragging) {
     window.petBridge.moveTo(e.screenX - _offX, e.screenY - _offY);
     return;
@@ -311,6 +315,7 @@ window.addEventListener('mousemove', e => {
 });
 
 window.addEventListener('mouseup', () => {
+  if (_isDebugPet) return;
   const wasDragging = _isDragging;
   clearTimeout(_longPressTimer);
   _longPressTimer = null;
@@ -322,23 +327,49 @@ window.addEventListener('mouseup', () => {
   }
 });
 
-window.petBridge.onStateChange(s => onSessionChange(mapBridgeState(s)));
+window.petBridge.onStateChange(s => {
+  if (_isDebugPet) return;
+  onSessionChange(mapBridgeState(s));
+});
+
+window.petBridge.onInitDebug(() => {
+  _isDebugPet = true;
+  const lbl = document.getElementById('debug-label');
+  if (lbl) { lbl.style.display = 'block'; lbl.textContent = '调试模式'; }
+});
 
 window.petBridge.onForceState(state => {
   clearTimeout(_debugTimer);
+  _debugClipId = null;
   if (!state) {
-    // Exit debug mode — resume normal state machine
     _debugState  = null;
     _debugSeqIdx = 0;
     _curState    = null;
     _enterState(_targetState());
+    const lbl = document.getElementById('debug-label');
+    if (lbl && _isDebugPet) lbl.textContent = '调试模式';
     return;
   }
   _debugState  = state;
   _debugSeqIdx = 0;
-  _curState    = null;  // force re-enter
+  _curState    = null;
   _enterState(state);
   _debugScheduleNext();
+  const lbl = document.getElementById('debug-label');
+  if (lbl && _isDebugPet) lbl.textContent = state;
+});
+
+window.petBridge.onForceClip(clipId => {
+  if (!_clips[clipId]) return;
+  clearTimeout(_debugTimer);
+  _debugClipId = clipId;
+  _debugState  = '__clip__';
+  _debugSeqIdx = 0;
+  _curState    = null;
+  _pending     = null;
+  _enterState('__clip__');
+  const lbl = document.getElementById('debug-label');
+  if (lbl) lbl.textContent = clipId;
 });
 
 window.petBridge.onPresetReload(() => {

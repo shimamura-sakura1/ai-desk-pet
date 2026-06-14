@@ -10,6 +10,7 @@ const SSH_CREDS_PATH = path.join(os.homedir(), '.ai-desk-pet', 'credentials.json
 
 let petWindow = null;
 let boardWindow = null;
+let debugPetWindow = null;
 let settingsWindow = null;
 let stateEditorWindow = null;
 let tray = null;
@@ -82,6 +83,41 @@ function createBoardWindow() {
       boardWindow.webContents.send('pet:sessions-update', lastSessions);
     }
   });
+}
+
+function createDebugPetWindow(pendingState = null) {
+  if (debugPetWindow && !debugPetWindow.isDestroyed()) {
+    if (pendingState) debugPetWindow.webContents.send('pet:force-state', pendingState);
+    debugPetWindow.focus();
+    return;
+  }
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  debugPetWindow = new BrowserWindow({
+    width: 219,
+    height: 180,
+    x: Math.max(0, width - 480),
+    y: height - 210,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+  debugPetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  debugPetWindow.setAlwaysOnTop(true, 'floating');
+  debugPetWindow.loadFile(path.join(__dirname, '../renderer/pet/index.html'), { hash: 'debug' });
+  debugPetWindow.webContents.once('did-finish-load', () => {
+    if (!debugPetWindow || debugPetWindow.isDestroyed()) return;
+    debugPetWindow.webContents.send('pet:init-debug');
+    if (pendingState) debugPetWindow.webContents.send('pet:force-state', pendingState);
+  });
+  debugPetWindow.on('closed', () => { debugPetWindow = null; });
 }
 
 function createTray() {
@@ -190,12 +226,44 @@ app.whenReady().then(() => {
   createPetWindow();
   createTray();
 
+  let _sshMonitors = [];
+
+  function stopSSHMonitors() {
+    for (const m of _sshMonitors) { try { m.disconnect(); } catch {} }
+    _sshMonitors = [];
+  }
+
+  function startSSHMonitors() {
+    let creds = [];
+    try { creds = JSON.parse(fs.readFileSync(SSH_CREDS_PATH, 'utf8')); } catch {}
+    for (const cred of creds) {
+      const id = `ssh:${cred.host}:${cred.port ?? 22}`;
+      const m  = new SSHMonitor(cred);
+      _sshMonitors.push(m);
+      m.on('sessions',     ss  => onMonitorUpdate(id, ss));
+      m.on('disconnected', ()  => { _allSessions.delete(id); onMonitorUpdate(id, []); });
+      m.on('error',        err => console.warn(`SSH [${cred.name || cred.host}]: ${err}`));
+      m.connect();
+    }
+  }
+
   const { notifyPetState, notifyTokenUpdate, notifySessions } = setupIPC({
     getPetWindow:         () => petWindow,
     getBoardWindow:       () => boardWindow,
+    getDebugPetWindow:    () => debugPetWindow,
     createBoardWindow,
+    createDebugPetWindow,
     createSettingsWindow,
     createStateEditorWindow,
+    onSSHCredsChanged: () => {
+      // Clear stale SSH sessions from board, then reconnect with new creds
+      for (const key of [..._allSessions.keys()]) {
+        if (key.startsWith('ssh:')) _allSessions.delete(key);
+      }
+      onMonitorUpdate('_flush', []);
+      stopSSHMonitors();
+      startSSHMonitors();
+    },
   });
 
   // ── Session aggregation (local + SSH) ───────────────────────
@@ -210,9 +278,9 @@ app.whenReady().then(() => {
     // Recompute global state from merged sessions
     const states = all.map(s => s.state);
     let global = 'sleep';
-    if (states.some(s => s === 'require_action' || s === 'alert')) global = 'require_action';
-    else if (states.some(s => s === 'act' || s === 'thinking'))    global = 'act';
-    else if (states.some(s => s === 'replied' || s === 'success')) global = 'success';
+    if (states.some(s => s === 'require_action' || s === 'alert' || s === 'replied')) global = 'require_action';
+    else if (states.some(s => s === 'act' || s === 'thinking'))                        global = 'act';
+    else if (states.some(s => s === 'success'))                                        global = 'success';
     notifyPetState(global);
   }
 
@@ -224,19 +292,7 @@ app.whenReady().then(() => {
   monitor.on('sessions', ss => onMonitorUpdate('local', ss));
   monitor.start(2000);
 
-  // SSH monitors — one per saved credential
-  function startSSHMonitors() {
-    let creds = [];
-    try { creds = JSON.parse(fs.readFileSync(SSH_CREDS_PATH, 'utf8')); } catch {}
-    for (const cred of creds) {
-      const id = `ssh:${cred.host}:${cred.port ?? 22}`;
-      const m  = new SSHMonitor(cred);
-      m.on('sessions',     ss  => onMonitorUpdate(id, ss));
-      m.on('disconnected', ()  => { _allSessions.delete(id); onMonitorUpdate(id, []); });
-      m.on('error',        err => console.warn(`SSH [${cred.name || cred.host}]: ${err}`));
-      m.connect();
-    }
-  }
+  // SSH monitors — started here and dynamically via onSSHCredsChanged
   startSSHMonitors();
 
   app.on('activate', () => {
