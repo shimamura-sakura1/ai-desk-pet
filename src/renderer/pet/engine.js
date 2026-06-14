@@ -56,11 +56,12 @@ let _isBored          = false;
 let _boredTimer       = null;
 
 function _targetState() {
-  if (_isDragging)                   return 'drag';
-  if (_sessionState === 'answering') return 'working';
-  if (_isFinishedLocked)             return 'done';
-  if (_isBored)                      return 'bored';
-  return 'idle';
+  return targetState({
+    isDragging:       _isDragging,
+    sessionState:     _sessionState,
+    isFinishedLocked: _isFinishedLocked,
+    isBored:          _isBored,
+  });
 }
 
 // ============================================================
@@ -203,16 +204,7 @@ function _onPetClick() {
   }
 }
 
-function _mapBridgeState(s) {
-  switch (s) {
-    case 'act':
-    case 'thinking':      return 'answering';
-    case 'require_action':
-    case 'alert':
-    case 'success':       return 'finished';
-    default:              return 'idle';
-  }
-}
+// mapBridgeState loaded from ../../lib/pet-state.js
 
 // ============================================================
 // MOUSE EVENTS  ── long press = drag, short click = board
@@ -265,7 +257,7 @@ window.addEventListener('mouseup', () => {
   }
 });
 
-window.petBridge.onStateChange(s => onSessionChange(_mapBridgeState(s)));
+window.petBridge.onStateChange(s => onSessionChange(mapBridgeState(s)));
 
 window.petBridge.onPresetReload(() => {
   // Reset playback state so engine picks up new clips
