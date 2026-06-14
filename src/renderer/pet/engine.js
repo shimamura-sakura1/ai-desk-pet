@@ -49,18 +49,21 @@ function _loadClips(resolvedClips) {
 // ============================================================
 // EXTERNAL STATE INPUTS
 // ============================================================
-let _sessionState     = 'idle';   // idle | answering | finished
-let _isDragging       = false;
-let _isFinishedLocked = false;
-let _isBored          = false;
-let _boredTimer       = null;
+let _sessionState      = 'idle';   // idle | answering | attention | finished
+let _isDragging        = false;
+let _isFinishedLocked  = false;
+let _isAttentionLocked = false;
+let _isBored           = false;
+let _boredTimer        = null;
 
 function _targetState() {
+  if (_debugState) return _debugState;
   return targetState({
-    isDragging:       _isDragging,
-    sessionState:     _sessionState,
-    isFinishedLocked: _isFinishedLocked,
-    isBored:          _isBored,
+    isDragging:        _isDragging,
+    sessionState:      _sessionState,
+    isFinishedLocked:  _isFinishedLocked,
+    isAttentionLocked: _isAttentionLocked,
+    isBored:           _isBored,
   });
 }
 
@@ -74,9 +77,57 @@ let _frameIdx    = 0;
 let _lastFrameTs = 0;
 let _pending     = null;    // state to enter after current outro
 
+// ============================================================
+// DEBUG STATE OVERRIDE
+// ============================================================
+let _debugState  = null;   // when set, overrides normal state machine
+let _debugSeqIdx = 0;      // which clip to play next (sequential)
+let _debugTimer  = null;
+
+function _debugScheduleNext() {
+  clearTimeout(_debugTimer);
+  if (!_debugState) return;
+  const clips = _preset?.states?.[_debugState]?.clips ?? [];
+  if (clips.length === 0) return;
+  const clipId = clips[_debugSeqIdx % clips.length];
+  const clip   = _clips[clipId];
+  const cycleDuration = clip
+    ? Math.max(1500, Math.min((clip.imgs.length / clip.fps) * 1000 * 2, 5000))
+    : 2000;
+  _debugTimer = setTimeout(_debugAdvance, cycleDuration);
+}
+
+function _debugAdvance() {
+  if (!_debugState) return;
+  const clips = _preset?.states?.[_debugState]?.clips ?? [];
+  if (clips.length === 0) return;
+
+  _debugSeqIdx = (_debugSeqIdx + 1) % clips.length;
+
+  // Trigger outro then re-enter, or switch immediately
+  _pending = _debugState;
+  if (_curClipId && _phase === 'loop') {
+    const clip = _clips[_curClipId];
+    const N    = clip?.imgs.length ?? 0;
+    if (clip?.threePhase && N >= 3) {
+      _phase       = 'outro';
+      _frameIdx    = N - 1;
+      _lastFrameTs = performance.now();
+    } else {
+      _enterState(_debugState);
+    }
+  } else {
+    _enterState(_debugState);
+  }
+  _debugScheduleNext();
+}
+
 function _pickClip(stateName) {
   const list = _preset?.states?.[stateName]?.clips ?? [];
   if (!list.length) return null;
+  if (_debugState === stateName) {
+    return list[_debugSeqIdx % list.length];
+  }
   return list[Math.floor(Math.random() * list.length)];
 }
 
@@ -182,17 +233,31 @@ function onDragEnd()   { _isDragging = false; }
 function onSessionChange(status) {
   _sessionState = status;
   if (status === 'answering') {
-    _isFinishedLocked = false;
+    _isFinishedLocked  = false;
+    _isAttentionLocked = false;
+    _isBored = false;
+    clearTimeout(_boredTimer);
+  } else if (status === 'attention') {
+    _isAttentionLocked = true;
+    _isFinishedLocked  = false;
     _isBored = false;
     clearTimeout(_boredTimer);
   } else if (status === 'finished') {
-    _isFinishedLocked = true;
+    _isAttentionLocked = false;
+    _isFinishedLocked  = true;
     _isBored = false;
     clearTimeout(_boredTimer);
+  } else if (status === 'idle') {
+    // Session went to sleep — clear locked states
+    _isAttentionLocked = false;
   }
 }
 
 function _onPetClick() {
+  if (_isAttentionLocked) {
+    _isAttentionLocked = false;
+    return;
+  }
   if (_isFinishedLocked) {
     _isFinishedLocked = false;
     return;
@@ -258,6 +323,23 @@ window.addEventListener('mouseup', () => {
 });
 
 window.petBridge.onStateChange(s => onSessionChange(mapBridgeState(s)));
+
+window.petBridge.onForceState(state => {
+  clearTimeout(_debugTimer);
+  if (!state) {
+    // Exit debug mode — resume normal state machine
+    _debugState  = null;
+    _debugSeqIdx = 0;
+    _curState    = null;
+    _enterState(_targetState());
+    return;
+  }
+  _debugState  = state;
+  _debugSeqIdx = 0;
+  _curState    = null;  // force re-enter
+  _enterState(state);
+  _debugScheduleNext();
+});
 
 window.petBridge.onPresetReload(() => {
   // Reset playback state so engine picks up new clips

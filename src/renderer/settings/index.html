@@ -103,14 +103,56 @@
       font-size: 16px; padding: 0 2px; flex-shrink: 0;
     }
     .action-path-clear:hover { color: #f38ba8; }
+    .wip-badge {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      background: #f38ba8; color: #1e1e2e;
+      border-radius: 3px; padding: 1px 5px;
+      margin-left: 6px; vertical-align: middle; letter-spacing: 0.3px;
+    }
+    .wip-panel {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 12px; min-height: 180px;
+      color: #6c7086;
+    }
+    .wip-panel .wip-icon { font-size: 40px; }
+    .wip-panel .wip-msg { font-size: 14px; color: #a6adc8; }
+    .wip-panel .wip-sub { font-size: 12px; color: #6c7086; }
+    .clips-root-row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+    .clips-root-row input {
+      flex: 1; margin-bottom: 0; font-size: 12px;
+      color: #a6adc8; background: #181825;
+    }
+    .clips-preview { margin-bottom: 16px; }
+    .clips-group {
+      display: flex; align-items: baseline; gap: 10px;
+      background: #313244; border-radius: 6px;
+      padding: 7px 12px; margin-bottom: 6px;
+    }
+    .state-tag {
+      flex-shrink: 0; font-size: 12px; font-weight: 600;
+      color: #cba6f7; min-width: 110px;
+    }
+    .clips-names { font-size: 12px; color: #a6adc8; }
+    .unmatched-tag { color: #6c7086; font-style: italic; }
+    .auth-toggle {
+      display: flex; gap: 0; margin-bottom: 16px;
+      border: 1px solid #45475a; border-radius: 6px; overflow: hidden;
+    }
+    .auth-btn {
+      flex: 1; padding: 7px 0; background: none; border: none;
+      color: #6c7086; font-size: 13px; cursor: pointer; transition: background .15s, color .15s;
+    }
+    .auth-btn.active { background: #45475a; color: #cdd6f4; font-weight: 600; }
+    .auth-btn:not(.active):hover { background: #313244; color: #a6adc8; }
   </style>
 </head>
 <body>
   <div class="tabs">
     <div class="tab active" data-panel="monitor">监控</div>
     <div class="tab" data-panel="ssh">SSH 远程</div>
-    <div class="tab" data-panel="pet">桌宠</div>
+
     <div class="tab" data-panel="actions">动作设置</div>
+    <div class="tab" data-panel="components">自定义组件<span class="wip-badge">WIP</span></div>
   </div>
 
   <!-- 监控设置 -->
@@ -135,39 +177,77 @@
       <div><label>Host</label><input id="ssh-host" placeholder="192.168.1.100"></div>
       <div style="flex:0.4"><label>Port</label><input id="ssh-port" type="number" value="22"></div>
     </div>
-    <div class="row">
+    <div class="row" style="margin-bottom:4px">
       <div><label>用户名</label><input id="ssh-user" placeholder="ubuntu"></div>
-      <div><label>密码</label><input id="ssh-pass" type="password" placeholder="（或使用私钥）"></div>
+      <div>
+        <label>认证方式</label>
+        <div class="auth-toggle">
+          <button class="auth-btn active" data-auth="password">密码</button>
+          <button class="auth-btn" data-auth="key">SSH 密钥</button>
+        </div>
+      </div>
     </div>
-    <div style="display:flex;gap:12px">
+    <!-- Password auth -->
+    <div id="auth-password-fields">
+      <label>密码</label>
+      <input id="ssh-pass" type="password" placeholder="输入密码（永久掩码保护）" autocomplete="new-password">
+    </div>
+    <!-- Key auth -->
+    <div id="auth-key-fields" style="display:none">
+      <label>私钥文件路径</label>
+      <input id="ssh-key-path" type="text" placeholder="~/.ssh/id_rsa" style="margin-bottom:12px">
+      <label>密钥密码（可选）</label>
+      <input id="ssh-key-pass" type="password" placeholder="如果密钥有密码，在此填写" autocomplete="new-password">
+    </div>
+    <div style="display:flex;gap:12px;margin-top:8px">
       <button class="btn btn-secondary" id="btn-test-ssh">测试连接</button>
       <button class="btn btn-primary" id="btn-add-ssh">添加</button>
     </div>
     <div class="status" id="status-ssh"></div>
-  </div>
-
-  <!-- 桌宠设置 -->
-  <div id="panel-pet" class="panel">
-    <h3>桌宠外观</h3>
-    <label>当前皮肤</label>
-    <select id="pet-skin"><option value="default">默认虎宠</option></select>
-    <label>尺寸（px）</label>
-    <input id="pet-size" type="number" value="120" min="80" max="240">
-    <button class="btn btn-primary" id="btn-save-pet">保存</button>
+    <p class="hint" style="margin-top:12px">
+      ⚠ 凭据存储在 <code>~/.ai-desk-pet/credentials.json</code>（不在项目目录），不会被上传到 GitHub。
+    </p>
   </div>
 
   <!-- 动作设置 -->
   <div id="panel-actions" class="panel">
     <h3>动作帧设置</h3>
-    <p class="hint">为每个动作指定存放帧图片的文件夹，留空则使用内置默认帧。<br>可用上下箭头调整动作优先级顺序。</p>
-    <div id="action-list"></div>
-    <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-primary" id="btn-save-actions">保存</button>
-      <button class="btn btn-secondary" id="btn-open-editor"
-              style="display:flex;align-items:center;gap:6px">
-        🎬 打开流程编辑器
-      </button>
+    <p class="hint">
+      选择包含动作子文件夹的 Clips 根目录，系统将自动识别并分配到对应状态。<br>
+      子文件夹命名示例：<code>idle-1/</code>、<code>idle-2/</code>、<code>working/</code>、<code>done/</code>、<code>attention/</code>、<code>drag-1/</code>
+    </p>
+    <label>Clips 根目录</label>
+    <div class="clips-root-row">
+      <input id="clipsRoot" type="text" readonly placeholder="选择包含动作子文件夹的目录…">
+      <button class="btn btn-secondary" id="btn-browse-root">浏览</button>
+    </div>
+    <div id="clips-preview" class="clips-preview" style="display:none"></div>
+    <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary" id="btn-apply-clips">应用到预设</button>
       <div class="status" id="status-actions"></div>
+    </div>
+  </div>
+
+  <!-- 自定义组件 -->
+  <div id="panel-components" class="panel">
+    <h3>自定义组件</h3>
+    <p class="hint">在 State Process Editor 中可为桌宠自定义动画片段（Clip）和状态节点（组件）。<br>
+      新增自定义状态功能仍在完善中，Clip 管理功能已可正常使用。</p>
+
+    <div style="margin-bottom:20px">
+      <button class="btn btn-primary" id="btn-open-editor" style="display:flex;align-items:center;gap:8px">
+        🎬 打开 State Process Editor
+      </button>
+    </div>
+
+    <div style="background:#313244;border-radius:8px;padding:14px 16px;border-left:3px solid #fbbf24">
+      <div style="font-size:13px;font-weight:600;color:#fbbf24;margin-bottom:6px">
+        🚧 正在开发中
+      </div>
+      <div style="font-size:12px;color:#a6adc8;line-height:1.7">
+        · 添加自定义 Clip — <span style="color:#a6e3a1">已支持</span><br>
+        · 自定义状态节点（组件）连接 — <span style="color:#f9e2af">开发中，当前版本不稳定</span>
+      </div>
     </div>
   </div>
 

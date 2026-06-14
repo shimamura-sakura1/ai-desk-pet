@@ -49,9 +49,20 @@
         <button class="btn" id="btn-add-clip" style="width:100%;font-size:12px">
           + 添加自定义 Clip
         </button>
-        <button class="btn" id="btn-add-state" style="width:100%;font-size:12px;margin-top:6px">
-          + 新增自定义状态
+        <button class="btn btn-wip" id="btn-add-state"
+                style="width:100%;font-size:12px;margin-top:6px"
+                title="自定义组件功能正在开发中，当前版本暂不稳定">
+          + 新增自定义组件
+          <span class="wip-badge">WIP</span>
         </button>
+      </div>
+
+      <div class="sidebar-section" id="debug-section">
+        <div class="sidebar-title debug-title">
+          🐛 调试预览
+          <button id="btn-debug-exit" class="debug-exit-btn" style="display:none">退出调试</button>
+        </div>
+        <div id="debug-state-list"></div>
       </div>
 
       <div id="prop-section" class="hidden">

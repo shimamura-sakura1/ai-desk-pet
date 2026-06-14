@@ -33,12 +33,13 @@ function stateInfo(state) {
     case 'require_action': return { cls: 'alert',    dot: 'dot-alert'    };
     case 'thinking':       return { cls: 'thinking', dot: 'dot-thinking' };
     case 'act':            return { cls: 'active',   dot: 'dot-active'   };
+    case 'replied':        return { cls: 'active',   dot: 'dot-active'   };
     default:               return { cls: 'sleep',    dot: 'dot-sleep'    };
   }
 }
 
 function sortSessions(sessions) {
-  const rank = { require_action: 3, thinking: 2, act: 2, sleep: 0 };
+  const rank = { require_action: 3, thinking: 2, act: 2, replied: 1, sleep: 0 };
   return [...sessions].sort((a, b) => {
     const dr = (rank[b.state] ?? 0) - (rank[a.state] ?? 0);
     if (dr !== 0) return dr;
@@ -100,10 +101,18 @@ function buildCard(s, isExpanded) {
         <circle cx="6" cy="8.2" r="0.65" fill="currentColor"/>
       </svg>
       Claude 需要你的授权
+    </div>`
+  : s.state === 'replied' ? `
+    <div class="detail-action detail-action-reply">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M2 9.5L5 6.5L2 3.5M6.5 9.5h3.5" stroke="currentColor"
+              stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Claude 已完成，等待下一步指令
     </div>` : '';
   const openBtn = s.filePath ? `
     <button class="detail-open" data-filepath="${esc(s.filePath)}">
-      在 Finder 中显示
+      跳转到项目
     </button>` : '';
 
   return `
@@ -130,7 +139,7 @@ function calcHeight(visible) {
   const exp = visible.find(s => s.id === expandedId);
   if (exp) {
     h += EXP_BASE;
-    if (exp.state === 'require_action') h += EXP_ACTION;
+    if (exp.state === 'require_action' || exp.state === 'replied') h += EXP_ACTION;
     if (exp.filePath) h += 0; // already in EXP_BASE estimate
   }
   return Math.max(60, Math.min(520, h));
@@ -173,11 +182,11 @@ function render(sessions) {
     });
   }
 
-  // "在 Finder 中显示" buttons
+  // "跳转到项目" buttons
   for (const btn of list.querySelectorAll('.detail-open')) {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      window.petBridge.openSessionFile(btn.dataset.filepath);
+      window.petBridge.openProject(btn.dataset.filepath);
     });
   }
 

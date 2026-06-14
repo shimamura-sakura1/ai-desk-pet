@@ -5,7 +5,7 @@ const os = require('os');
 const EventEmitter = require('events');
 
 const CLAUDE_LOG_DIR = path.join(os.homedir(), '.claude', 'projects');
-const INACTIVITY_MS = 30000;
+const INACTIVITY_MS = 180000; // 3 min — long enough for Claude to finish thinking
 
 class LocalMonitor extends EventEmitter {
   constructor() {
@@ -106,7 +106,7 @@ class LocalMonitor extends EventEmitter {
 
   _handleEntry(entry, session) {
     let nextState = null;
-    let msg = session.lastMessage;
+    let msg = null;
 
     if (entry.type === 'assistant') {
       const content = entry.message?.content;
@@ -116,8 +116,9 @@ class LocalMonitor extends EventEmitter {
           msg = 'Claude needs your permission';
         } else {
           const text = content.find(c => c.type === 'text');
-          nextState = 'act';
-          if (text?.text) msg = text.text.slice(0, 60).replace(/\n/g, ' ') + '…';
+          // Pure text response = Claude finished, waiting for user reply
+          nextState = 'replied';
+          if (text?.text) msg = text.text.slice(0, 80).replace(/\n/g, ' ') + '…';
         }
       }
     } else if (entry.type === 'user') {
@@ -133,24 +134,28 @@ class LocalMonitor extends EventEmitter {
         const clean = text.trim();
         if (clean && !clean.startsWith('<')) {
           if (session.name === 'Session') session.name = clean.slice(0, 40);
-          msg = clean.slice(0, 60).replace(/\n/g, ' ');
+          msg = clean.slice(0, 80).replace(/\n/g, ' ');
         }
       }
     }
 
-    if (nextState && nextState !== session.state) {
-      session.state = nextState;
-      session.lastMessage = msg;
-      session.lastActiveAt = Date.now();
-      clearTimeout(session.inactivityTimer);
-      session.inactivityTimer = setTimeout(() => {
-        session.state = 'sleep';
-        session.lastMessage = '';
-        this._emitUpdate();
-      }, INACTIVITY_MS);
-      return true;
-    }
-    return false;
+    if (!nextState) return false;
+
+    const stateChanged = nextState !== session.state;
+    const msgChanged   = msg !== null && msg !== session.lastMessage;
+
+    if (!stateChanged && !msgChanged) return false;
+
+    if (stateChanged) session.state = nextState;
+    if (msg !== null) session.lastMessage = msg;
+    session.lastActiveAt = Date.now();
+    clearTimeout(session.inactivityTimer);
+    session.inactivityTimer = setTimeout(() => {
+      session.state = 'sleep';
+      session.lastMessage = '';
+      this._emitUpdate();
+    }, INACTIVITY_MS);
+    return true;
   }
 
   _buildSessionInfo(filePath) {
@@ -184,7 +189,31 @@ class LocalMonitor extends EventEmitter {
     let createdAt = null;
     try { createdAt = fs.statSync(filePath).birthtimeMs; } catch {}
 
-    return { id, name, project, state: 'sleep', lastMessage: '', filePath,
+    // Seed lastMessage from the most recent assistant/user text in the file
+    let lastMessage = '';
+    try {
+      const allLines = fs.readFileSync(filePath, 'utf8').split('\n').filter(l => l.trim());
+      for (const line of allLines.slice(-15).reverse()) {
+        try {
+          const e = JSON.parse(line);
+          if (e.type === 'assistant') {
+            const c = e.message?.content;
+            if (Array.isArray(c) && !c.some(x => x.type === 'tool_use')) {
+              const t = c.find(x => x.type === 'text');
+              if (t?.text) { lastMessage = t.text.slice(0, 80).replace(/\n/g, ' ') + '…'; break; }
+            }
+          } else if (e.type === 'user' && e.toolUseResult === undefined) {
+            const c = e.message?.content;
+            const text = typeof c === 'string' ? c
+              : Array.isArray(c) ? (c.find(x => x.type === 'text')?.text ?? '') : '';
+            const clean = text.trim();
+            if (clean && !clean.startsWith('<')) { lastMessage = clean.slice(0, 80).replace(/\n/g, ' '); break; }
+          }
+        } catch {}
+      }
+    } catch {}
+
+    return { id, name, project, state: 'sleep', lastMessage, filePath,
              inactivityTimer: null, createdAt, lastActiveAt: null, messageCount: 0 };
   }
 
@@ -215,11 +244,12 @@ class LocalMonitor extends EventEmitter {
     //   4. Otherwise → sleep
     const states = sessions.map(s => s.state);
     let globalState = 'sleep';
-    if (states.some(s => s === 'act' || s === 'thinking')) {
-      globalState = 'act';
-    } else if (states.some(s => s === 'require_action' || s === 'alert')) {
+    // Priority: attention (needs permission) > working (active) > done (replied/finished) > sleep
+    if (states.some(s => s === 'require_action' || s === 'alert')) {
       globalState = 'require_action';
-    } else if (states.some(s => s === 'success')) {
+    } else if (states.some(s => s === 'act' || s === 'thinking')) {
+      globalState = 'act';
+    } else if (states.some(s => s === 'replied' || s === 'success')) {
       globalState = 'success';
     }
     this.emit('state', globalState);

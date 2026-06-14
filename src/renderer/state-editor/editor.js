@@ -1,22 +1,24 @@
 // ── Constants ─────────────────────────────────────────────────
 
 const STATE_COLORS = {
-  idle:    { bg: 'rgba(74,222,128,0.07)',  border: '#4ade80', text: '#4ade80'  },
-  bored:   { bg: 'rgba(168,85,247,0.07)', border: '#a855f7', text: '#a855f7'  },
-  working: { bg: 'rgba(96,165,250,0.07)', border: '#60a5fa', text: '#60a5fa'  },
-  done:    { bg: 'rgba(251,146,60,0.07)', border: '#fb923c', text: '#fb923c'  },
-  drag:    { bg: 'rgba(248,113,113,0.07)',border: '#f87171', text: '#f87171'  },
+  idle:      { bg: 'rgba(74,222,128,0.07)',  border: '#4ade80', text: '#4ade80'  },
+  bored:     { bg: 'rgba(168,85,247,0.07)', border: '#a855f7', text: '#a855f7'  },
+  working:   { bg: 'rgba(96,165,250,0.07)', border: '#60a5fa', text: '#60a5fa'  },
+  done:      { bg: 'rgba(251,146,60,0.07)', border: '#fb923c', text: '#fb923c'  },
+  drag:      { bg: 'rgba(248,113,113,0.07)',border: '#f87171', text: '#f87171'  },
+  attention: { bg: 'rgba(251,191,36,0.07)', border: '#fbbf24', text: '#fbbf24'  },
 };
 
 const STATE_LABELS = {
-  idle:    '待机  IDLE',
-  bored:   '无聊  BORED',
-  working: '工作中  WORKING',
-  done:    '工作结束  DONE',
-  drag:    '拖动  DRAG',
+  idle:      '待机  IDLE',
+  bored:     '无聊  BORED',
+  working:   '工作中  WORKING',
+  done:      '工作结束  DONE',
+  drag:      '拖动  DRAG',
+  attention: '等待回应  ATTENTION',
 };
 
-const CORE_STATES = ['idle', 'bored', 'working', 'done', 'drag'];
+const CORE_STATES = ['idle', 'bored', 'working', 'done', 'drag', 'attention'];
 
 const CUSTOM_COLORS = [
   { bg: 'rgba(129,140,248,0.07)', border: '#818cf8', text: '#818cf8' },
@@ -30,11 +32,13 @@ const EDGE_COLORS = ['#818cf8', '#34d399', '#fb7185', '#fbbf24', '#a78bfa'];
 
 // Fixed state-machine transitions (not editable by user)
 const FIXED_TRANSITIONS = [
-  { from: 'idle',    to: 'bored',   label: 'idle timeout', bidir: true },
-  { from: 'idle',    to: 'working', label: 'Claude active' },
-  { from: 'bored',   to: 'working', label: 'Claude active' },
-  { from: 'working', to: 'done',    label: 'session done'  },
-  { from: 'done',    to: 'idle',    label: 'click / idle'  },
+  { from: 'idle',      to: 'bored',     label: 'idle timeout',  bidir: true },
+  { from: 'idle',      to: 'working',   label: 'Claude active'  },
+  { from: 'bored',     to: 'working',   label: 'Claude active'  },
+  { from: 'working',   to: 'attention', label: 'needs input',   bidir: true },
+  { from: 'working',   to: 'done',      label: 'session done'   },
+  { from: 'attention', to: 'idle',      label: 'click / idle'   },
+  { from: 'done',      to: 'idle',      label: 'click / idle'   },
 ];
 
 const NODE_W = 200;
@@ -641,10 +645,64 @@ document.getElementById('btn-apply').addEventListener('click', async () => {
   status('已应用，宠物动画正在更新…');
 });
 
+// ── Debug panel ───────────────────────────────────────────────
+
+let _debugActiveState = null;
+
+function renderDebugPanel() {
+  const list = document.getElementById('debug-state-list');
+  if (!list || !preset) return;
+
+  const customKeys = Object.keys(preset.states ?? {}).filter(k => !CORE_STATES.includes(k));
+
+  list.innerHTML = Object.entries(preset.states ?? {}).map(([sid, def]) => {
+    const isCustom  = !CORE_STATES.includes(sid);
+    const customIdx = isCustom ? customKeys.indexOf(sid) : 0;
+    const colors    = STATE_COLORS[sid] ?? CUSTOM_COLORS[customIdx % CUSTOM_COLORS.length];
+    const clips     = def.clips ?? [];
+    const isActive  = _debugActiveState === sid;
+
+    const clipListHtml = isActive && clips.length > 0 ? `
+      <div class="debug-clip-list">
+        ${clips.map(cid => `<div class="debug-clip-item">${esc(cid)}</div>`).join('')}
+      </div>` : '';
+
+    return `
+      <div class="debug-state-item">
+        <button class="debug-state-btn${isActive ? ' debug-active' : ''}"
+                data-sid="${esc(sid)}"
+                style="border-color:${colors.border};${isActive ? `background:${colors.bg};` : ''}"
+                ${clips.length === 0 ? 'disabled title="无 Clip，无法预览"' : ''}>
+          <span class="debug-state-label" style="color:${colors.text}">${esc(STATE_LABELS[sid] ?? sid)}</span>
+          <span class="debug-clip-count">${clips.length > 0 ? `×${clips.length}` : '空'}</span>
+        </button>
+        ${clipListHtml}
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.debug-state-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sid = btn.dataset.sid;
+      _debugActiveState = _debugActiveState === sid ? null : sid;
+      document.getElementById('btn-debug-exit').style.display = _debugActiveState ? '' : 'none';
+      renderDebugPanel();
+      window.petBridge.forceState(_debugActiveState);
+    });
+  });
+}
+
+document.getElementById('btn-debug-exit').addEventListener('click', () => {
+  _debugActiveState = null;
+  document.getElementById('btn-debug-exit').style.display = 'none';
+  renderDebugPanel();
+  window.petBridge.forceState(null);
+});
+
 // ── Init ─────────────────────────────────────────────────────
 
 window.petBridge.getPreset().then(p => {
   preset = p;
   preset.transitions = preset.transitions ?? [];
   renderAll();
+  renderDebugPanel();
 });

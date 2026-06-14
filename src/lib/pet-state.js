@@ -6,18 +6,19 @@ function mapBridgeState(s) {
     case 'act':
     case 'thinking':       return 'answering';
     case 'require_action':
-    case 'alert':
+    case 'alert':          return 'attention';
     case 'success':        return 'finished';
     default:               return 'idle';
   }
 }
 
-// Pure priority-ordered state resolver (drag > working > done > bored > idle)
-function targetState({ isDragging, sessionState, isFinishedLocked, isBored }) {
-  if (isDragging)                   return 'drag';
-  if (sessionState === 'answering') return 'working';
-  if (isFinishedLocked)             return 'done';
-  if (isBored)                      return 'bored';
+// Pure priority-ordered state resolver (drag > working > attention > done > bored > idle)
+function targetState({ isDragging, sessionState, isFinishedLocked, isAttentionLocked, isBored }) {
+  if (isDragging)                      return 'drag';
+  if (sessionState === 'answering')    return 'working';
+  if (isAttentionLocked)               return 'attention';
+  if (isFinishedLocked)                return 'done';
+  if (isBored)                         return 'bored';
   return 'idle';
 }
 

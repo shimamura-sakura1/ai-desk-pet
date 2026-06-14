@@ -2,107 +2,29 @@
   "version": 1,
   "name": "默认预设",
   "clipDefs": {
-    "idle-1": {
-      "folder": "assets/clips/idle-1",
-      "fps": 2.78,
-      "threePhase": true
-    },
-    "idle-2": {
-      "folder": "assets/clips/idle-2",
-      "fps": 2.78,
-      "threePhase": true
-    },
-    "idle-3": {
-      "folder": "assets/clips/idle-3",
-      "fps": 4,
-      "threePhase": true
-    },
-    "working": {
-      "folder": "assets/clips/working",
-      "fps": 5,
-      "threePhase": true
-    },
-    "done": {
-      "folder": "assets/clips/done",
-      "fps": 3.57,
-      "threePhase": true
-    },
-    "bored": {
-      "folder": "assets/clips/bored",
-      "fps": 4.55,
-      "threePhase": true
-    },
-    "drag": {
-      "folder": "assets/clips/drag",
-      "fps": 5,
-      "threePhase": false
-    },
-    "idle-3-2": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/assets/clips/idle-3",
-      "fps": 12,
-      "threePhase": false
-    },
-    "drag-2": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/tachibana-kanade/clips/drag-2",
-      "fps": 6,
-      "threePhase": true
-    }
+    "idle-1":  { "folder": "assets/clips/idle-1",  "fps": 2.78, "threePhase": true  },
+    "idle-2":  { "folder": "assets/clips/idle-2",  "fps": 2.78, "threePhase": true  },
+    "idle-3":  { "folder": "assets/clips/idle-3",  "fps": 4,    "threePhase": true  },
+    "working": { "folder": "assets/clips/working", "fps": 2.78, "threePhase": true  },
+    "done":    { "folder": "assets/clips/done",    "fps": 2.78, "threePhase": true  },
+    "bored":   { "folder": "assets/clips/bored",   "fps": 4.55, "threePhase": true  },
+    "drag":    { "folder": "assets/clips/drag",    "fps": 5,    "threePhase": false }
   },
   "states": {
-    "idle": {
-      "clips": [
-        "idle-1",
-        "idle-2",
-        "idle-3"
-      ],
-      "mode": "random"
-    },
-    "working": {
-      "clips": [
-        "working"
-      ],
-      "mode": "random"
-    },
-    "done": {
-      "clips": [
-        "done"
-      ],
-      "mode": "random"
-    },
-    "bored": {
-      "clips": [
-        "bored"
-      ],
-      "mode": "random"
-    },
-    "drag": {
-      "clips": [
-        "drag",
-        "drag-2"
-      ],
-      "mode": "random"
-    }
+    "idle":      { "clips": ["idle-1", "idle-2"], "mode": "random" },
+    "working":   { "clips": ["working"],          "mode": "random" },
+    "attention": { "clips": ["done"],             "mode": "random" },
+    "done":      { "clips": ["done"],             "mode": "random" },
+    "bored":     { "clips": ["bored"],            "mode": "random" },
+    "drag":      { "clips": ["drag"],             "mode": "random" }
   },
   "layout": {
-    "idle": {
-      "x": 60,
-      "y": 60
-    },
-    "working": {
-      "x": 321,
-      "y": 22
-    },
-    "done": {
-      "x": 375,
-      "y": 403
-    },
-    "bored": {
-      "x": 52,
-      "y": 381
-    },
-    "drag": {
-      "x": 500,
-      "y": 158
-    }
-  }
+    "idle":      { "x": 60,  "y": 60  },
+    "working":   { "x": 436, "y": 68  },
+    "attention": { "x": 395, "y": 359 },
+    "done":      { "x": 682, "y": 346 },
+    "bored":     { "x": 52,  "y": 381 },
+    "drag":      { "x": 708, "y": 108 }
+  },
+  "transitions": []
 }

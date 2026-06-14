@@ -3,6 +3,9 @@ charactor/
 .claude/
 gif/
 
+# User config — contains SSH credentials, NEVER commit
+config/user.json
+
 # Dependencies
 node_modules/
 

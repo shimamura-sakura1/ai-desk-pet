@@ -1,54 +1,89 @@
-const DEFAULT_ACTIONS = [
-  { id: 'idle',    name: '待机'         },
-  { id: 'bored',   name: '无聊'         },
-  { id: 'working', name: '工作中'       },
-  { id: 'done',    name: '工作结束'     },
-  { id: 'drag',    name: '鼠标点击拖动' },
-];
+const STATE_NAME_MAP = {
+  idle:      '待机',
+  bored:     '无聊',
+  working:   '工作中',
+  done:      '工作结束',
+  drag:      '拖动',
+  attention: '等待回应',
+};
 
 let cfg = {};
+let _sshCreds = [];   // stored in ~/.ai-desk-pet/credentials.json
+let _authType = 'password';
 
 async function load() {
   cfg = await window.settingsBridge.getConfig();
+  _sshCreds = await window.settingsBridge.getSSHCreds();
+
+  // One-time migration: move cfg.ssh → credentials store
+  if (Array.isArray(cfg.ssh) && cfg.ssh.length && !_sshCreds.length) {
+    _sshCreds = cfg.ssh.map(s => ({ ...s, authType: s.authType ?? 'password' }));
+    await window.settingsBridge.saveSSHCreds(_sshCreds);
+    delete cfg.ssh;
+    await window.settingsBridge.saveConfig(cfg);
+  } else if (cfg.ssh) {
+    // Clean out the old field even if creds already migrated
+    delete cfg.ssh;
+    await window.settingsBridge.saveConfig(cfg);
+  }
 
   document.getElementById('localLogDir').value = cfg.monitor?.localLogDir ?? '';
   document.getElementById('pollInterval').value = cfg.monitor?.pollIntervalMs ?? 2000;
-  document.getElementById('pet-size').value = cfg.pet?.size ?? 120;
-  document.getElementById('pet-skin').value = cfg.pet?.activePet ?? 'default';
+  const savedRoot = cfg.clipsRootFolder ?? '';
+  if (savedRoot) {
+    document.getElementById('clipsRoot').value = savedRoot;
+    await scanClipsRoot(savedRoot);
+  }
 
-  // Merge saved actions with defaults (preserve order & folder from cfg)
-  const saved = cfg.actions ?? [];
-  cfg.actions = DEFAULT_ACTIONS.map(def => {
-    const found = saved.find(a => a.id === def.id);
-    return { ...def, folder: found?.folder ?? '' };
-  });
-  renderActions();
   renderSSHList();
 }
 
 function renderSSHList() {
   const list = document.getElementById('ssh-list');
-  const items = cfg.ssh ?? [];
-  if (!items.length) { list.innerHTML = '<div style="color:#6c7086;font-size:13px">暂无远程机器</div>'; return; }
-  list.innerHTML = items.map((s, i) => `
+  if (!_sshCreds.length) {
+    list.innerHTML = '<div style="color:#6c7086;font-size:13px">暂无远程机器</div>';
+    return;
+  }
+  list.innerHTML = _sshCreds.map((s, i) => `
     <div class="ssh-item">
-      <div><div class="name">${s.name}</div><div class="host">${s.username}@${s.host}:${s.port??22}</div></div>
+      <div>
+        <div class="name">${esc(s.name)}</div>
+        <div class="host">${esc(s.username)}@${esc(s.host)}:${s.port ?? 22}
+          <span style="margin-left:6px;font-size:11px;color:#6c7086">
+            [${s.authType === 'key' ? 'SSH 密钥' : '密码'}]
+          </span>
+        </div>
+      </div>
       <button class="del" data-i="${i}">×</button>
     </div>
   `).join('');
 
   list.querySelectorAll('.del').forEach(btn => {
-    btn.addEventListener('click', () => {
-      cfg.ssh.splice(Number(btn.dataset.i), 1);
+    btn.addEventListener('click', async () => {
+      _sshCreds.splice(Number(btn.dataset.i), 1);
+      await window.settingsBridge.saveSSHCreds(_sshCreds);
       renderSSHList();
     });
   });
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function setStatus(id, msg, ok) {
   const el = document.getElementById(id);
   el.textContent = msg;
   el.className = 'status ' + (ok ? 'ok' : 'err');
+}
+
+function setAuthType(type) {
+  _authType = type;
+  document.querySelectorAll('.auth-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.auth === type);
+  });
+  document.getElementById('auth-password-fields').style.display = type === 'password' ? '' : 'none';
+  document.getElementById('auth-key-fields').style.display      = type === 'key'      ? '' : 'none';
 }
 
 // Tab 切换
@@ -71,105 +106,178 @@ document.getElementById('btn-save-monitor').addEventListener('click', async () =
   setStatus('status-monitor', '已保存', true);
 });
 
+// Auth 类型切换
+document.querySelectorAll('.auth-btn').forEach(btn => {
+  btn.addEventListener('click', () => setAuthType(btn.dataset.auth));
+});
+
 // SSH 测试
 document.getElementById('btn-test-ssh').addEventListener('click', async () => {
   setStatus('status-ssh', '连接中…', true);
-  const res = await window.settingsBridge.testSSH({
-    host: document.getElementById('ssh-host').value,
-    port: Number(document.getElementById('ssh-port').value) || 22,
+  const payload = {
+    host:     document.getElementById('ssh-host').value,
+    port:     Number(document.getElementById('ssh-port').value) || 22,
     username: document.getElementById('ssh-user').value,
-    password: document.getElementById('ssh-pass').value,
-  });
+    authType: _authType,
+  };
+  if (_authType === 'key') {
+    payload.keyPath    = document.getElementById('ssh-key-path').value;
+    payload.passphrase = document.getElementById('ssh-key-pass').value;
+  } else {
+    payload.password = document.getElementById('ssh-pass').value;
+  }
+  const res = await window.settingsBridge.testSSH(payload);
   setStatus('status-ssh', res.ok ? '连接成功' : `失败：${res.error}`, res.ok);
 });
 
 // SSH 添加
 document.getElementById('btn-add-ssh').addEventListener('click', async () => {
-  const entry = {
-    name: document.getElementById('ssh-name').value || 'Server',
-    host: document.getElementById('ssh-host').value,
-    port: Number(document.getElementById('ssh-port').value) || 22,
-    username: document.getElementById('ssh-user').value,
-    password: document.getElementById('ssh-pass').value,
-  };
-  if (!entry.host || !entry.username) { setStatus('status-ssh', '请填写 Host 和用户名', false); return; }
-  cfg.ssh = cfg.ssh ?? [];
-  cfg.ssh.push(entry);
-  await window.settingsBridge.saveConfig(cfg);
-  renderSSHList();
-  setStatus('status-ssh', '已添加', true);
-});
+  const host     = document.getElementById('ssh-host').value.trim();
+  const username = document.getElementById('ssh-user').value.trim();
+  if (!host || !username) { setStatus('status-ssh', '请填写 Host 和用户名', false); return; }
 
-// 保存桌宠设置
-document.getElementById('btn-save-pet').addEventListener('click', async () => {
-  cfg.pet = {
-    activePet: document.getElementById('pet-skin').value,
-    size: Number(document.getElementById('pet-size').value),
+  const entry = {
+    name:     document.getElementById('ssh-name').value.trim() || host,
+    host,
+    port:     Number(document.getElementById('ssh-port').value) || 22,
+    username,
+    authType: _authType,
   };
-  await window.settingsBridge.saveConfig(cfg);
+  if (_authType === 'key') {
+    const keyPath = document.getElementById('ssh-key-path').value.trim();
+    if (!keyPath) { setStatus('status-ssh', '请选择私钥文件', false); return; }
+    entry.keyPath    = keyPath;
+    entry.passphrase = document.getElementById('ssh-key-pass').value;
+  } else {
+    entry.password = document.getElementById('ssh-pass').value;
+  }
+
+  _sshCreds.push(entry);
+  await window.settingsBridge.saveSSHCreds(_sshCreds);
+  renderSSHList();
+
+  // Clear form
+  ['ssh-name','ssh-host','ssh-port','ssh-user','ssh-pass','ssh-key-path','ssh-key-pass'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = id === 'ssh-port' ? '22' : '';
+  });
+  setAuthType('password');
+  setStatus('status-ssh', '已添加，凭据安全存储在 ~/.ai-desk-pet/', true);
 });
 
 // ── 动作设置 ──────────────────────────────────────────────────
 
-function renderActions() {
-  const list = document.getElementById('action-list');
-  if (!list) return;
-  const actions = cfg.actions ?? [];
+let _detectedClips = [];
 
-  list.innerHTML = actions.map((a, i) => `
-    <div class="action-row" data-idx="${i}">
-      <div class="action-header">
-        <div class="action-order-btns">
-          <button class="btn-order" data-dir="-1" data-idx="${i}" ${i === 0 ? 'disabled' : ''}>▲</button>
-          <button class="btn-order" data-dir="1"  data-idx="${i}" ${i === actions.length - 1 ? 'disabled' : ''}>▼</button>
-        </div>
-        <span class="action-name-tag">${a.name}</span>
-      </div>
-      <div class="action-path-row">
-        <input type="text" readonly placeholder="未设置 — 使用内置默认帧"
-               value="${a.folder ? a.folder.replace(/</g,'&lt;') : ''}">
-        <button class="btn btn-secondary btn-browse" data-idx="${i}">选择文件夹</button>
-        ${a.folder ? `<button class="action-path-clear" data-idx="${i}" title="清除">×</button>` : ''}
-      </div>
-    </div>
-  `).join('');
-
-  // 上下移动
-  list.querySelectorAll('.btn-order').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = Number(btn.dataset.idx);
-      const dir = Number(btn.dataset.dir);
-      const arr = cfg.actions;
-      if (idx + dir < 0 || idx + dir >= arr.length) return;
-      [arr[idx], arr[idx + dir]] = [arr[idx + dir], arr[idx]];
-      renderActions();
-    });
-  });
-
-  // 选择文件夹
-  list.querySelectorAll('.btn-browse').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const path = await window.settingsBridge.selectFolder();
-      if (path) {
-        cfg.actions[Number(btn.dataset.idx)].folder = path;
-        renderActions();
-      }
-    });
-  });
-
-  // 清除路径
-  list.querySelectorAll('.action-path-clear').forEach(btn => {
-    btn.addEventListener('click', () => {
-      cfg.actions[Number(btn.dataset.idx)].folder = '';
-      renderActions();
-    });
-  });
+function mapClipNameToState(name) {
+  const lower = name.toLowerCase();
+  if (lower === 'idle' || lower.startsWith('idle-')) return 'idle';
+  if (lower === 'drag' || lower.startsWith('drag-')) return 'drag';
+  if (['working', 'done', 'bored', 'attention'].includes(lower)) return lower;
+  return null;
 }
 
-document.getElementById('btn-save-actions')?.addEventListener('click', async () => {
+async function scanClipsRoot(folder) {
+  const subdirs = await window.settingsBridge.scanClipsFolder(folder);
+  _detectedClips = subdirs.map(name => ({
+    name,
+    state: mapClipNameToState(name),
+    path: folder + '/' + name,
+  }));
+  renderClipsPreview();
+}
+
+function renderClipsPreview() {
+  const preview = document.getElementById('clips-preview');
+  if (!_detectedClips.length) { preview.style.display = 'none'; return; }
+
+  const byState = {};
+  const unmatched = [];
+  for (const c of _detectedClips) {
+    if (c.state) {
+      const label = STATE_NAME_MAP[c.state] ?? c.state;
+      (byState[label] = byState[label] ?? []).push(c.name);
+    } else {
+      unmatched.push(c.name);
+    }
+  }
+
+  const rows = Object.entries(byState).map(([label, names]) => `
+    <div class="clips-group">
+      <span class="state-tag">${label}</span>
+      <span class="clips-names">${names.join('、')}</span>
+    </div>`).join('');
+
+  const unknownRow = unmatched.length ? `
+    <div class="clips-group">
+      <span class="state-tag unmatched-tag">未识别</span>
+      <span class="clips-names unmatched-tag">${unmatched.join('、')}</span>
+    </div>` : '';
+
+  preview.style.display = 'block';
+  preview.innerHTML = rows + unknownRow;
+}
+
+document.getElementById('btn-browse-root')?.addEventListener('click', async () => {
+  const folder = await window.settingsBridge.selectFolder();
+  if (!folder) return;
+  document.getElementById('clipsRoot').value = folder;
+  cfg.clipsRootFolder = folder;
+  await scanClipsRoot(folder);
+});
+
+document.getElementById('btn-apply-clips')?.addEventListener('click', async () => {
+  const folder = document.getElementById('clipsRoot').value;
+  if (!folder || !_detectedClips.length) {
+    setStatus('status-actions', '请先选择 Clips 根目录', false);
+    return;
+  }
+
+  const preset = await window.settingsBridge.getPreset();
+  delete preset.resolvedClips;
+
+  // Build new root clip set
+  const newClipDefs = {};
+  const stateClips  = {};
+  for (const clip of _detectedClips) {
+    if (!clip.state) continue;
+    newClipDefs[clip.name] = { folder: clip.path, fps: 2.78, threePhase: true };
+    (stateClips[clip.state] = stateClips[clip.state] ?? []).push(clip.name);
+  }
+
+  const prevRootIds = new Set(preset.rootClipIds ?? []);
+  const rootChanged = !preset.clipsRootFolder || preset.clipsRootFolder !== folder;
+
+  if (rootChanged) {
+    // Different root → full reset: wipe all clips (root + custom), start fresh
+    preset.clipDefs = { ...newClipDefs };
+    for (const state of Object.keys(preset.states ?? {})) {
+      preset.states[state].clips = stateClips[state] ?? [];
+    }
+  } else {
+    // Same root → replace root-derived clips, keep user-added custom clips
+    const customDefs = {};
+    for (const [id, def] of Object.entries(preset.clipDefs ?? {})) {
+      if (!prevRootIds.has(id)) customDefs[id] = def;
+    }
+    preset.clipDefs = { ...customDefs, ...newClipDefs };
+
+    for (const state of Object.keys(preset.states ?? {})) {
+      const customInState = (preset.states[state].clips ?? []).filter(c => !prevRootIds.has(c));
+      preset.states[state].clips = [...customInState, ...(stateClips[state] ?? [])];
+    }
+  }
+
+  // Record which clip IDs came from this root scan
+  preset.rootClipIds     = Object.keys(newClipDefs);
+  preset.clipsRootFolder = folder;
+
+  await window.settingsBridge.savePreset(preset);
+  cfg.clipsRootFolder = folder;
   await window.settingsBridge.saveConfig(cfg);
-  setStatus('status-actions', '已保存', true);
-  setTimeout(() => setStatus('status-actions', '', true), 2000);
+  const msg = rootChanged ? '已重置 Clip 库并应用新根目录，重启宠物生效' : '已更新 Clip 库，重启宠物生效';
+  setStatus('status-actions', msg, true);
+  setTimeout(() => setStatus('status-actions', '', true), 3000);
 });
 
 document.getElementById('btn-open-editor')?.addEventListener('click', () => {

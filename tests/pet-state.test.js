@@ -8,8 +8,8 @@ describe('mapBridgeState', () => {
   test.each([
     ['act',            'answering'],
     ['thinking',       'answering'],
-    ['require_action', 'finished'],
-    ['alert',          'finished'],
+    ['require_action', 'attention'],
+    ['alert',          'attention'],
     ['success',        'finished'],
     ['idle',           'idle'],
     ['unknown-string', 'idle'],
@@ -23,7 +23,7 @@ describe('mapBridgeState', () => {
 // ── targetState ───────────────────────────────────────────────
 
 describe('targetState priority', () => {
-  const base = { isDragging: false, sessionState: 'idle', isFinishedLocked: false, isBored: false };
+  const base = { isDragging: false, sessionState: 'idle', isFinishedLocked: false, isAttentionLocked: false, isBored: false };
 
   test('default → idle', () => {
     expect(targetState(base)).toBe('idle');
@@ -41,12 +41,20 @@ describe('targetState priority', () => {
     expect(targetState({ ...base, isFinishedLocked: true, isBored: true })).toBe('done');
   });
 
+  test('isAttentionLocked → attention', () => {
+    expect(targetState({ ...base, isAttentionLocked: true })).toBe('attention');
+  });
+
+  test('isAttentionLocked overrides done and bored', () => {
+    expect(targetState({ ...base, isAttentionLocked: true, isFinishedLocked: true, isBored: true })).toBe('attention');
+  });
+
   test('sessionState answering → working', () => {
     expect(targetState({ ...base, sessionState: 'answering' })).toBe('working');
   });
 
-  test('answering overrides isFinishedLocked and isBored', () => {
-    expect(targetState({ ...base, sessionState: 'answering', isFinishedLocked: true, isBored: true })).toBe('working');
+  test('answering overrides attention, done and bored', () => {
+    expect(targetState({ ...base, sessionState: 'answering', isAttentionLocked: true, isFinishedLocked: true, isBored: true })).toBe('working');
   });
 
   test('isDragging → drag (highest priority)', () => {
@@ -54,6 +62,7 @@ describe('targetState priority', () => {
       isDragging: true,
       sessionState: 'answering',
       isFinishedLocked: true,
+      isAttentionLocked: true,
       isBored: true,
     })).toBe('drag');
   });
