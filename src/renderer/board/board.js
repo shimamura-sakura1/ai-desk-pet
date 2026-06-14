@@ -147,12 +147,27 @@ function calcHeight(visible) {
 
 // ── Render ──────────────────────────────────────────────────────
 
+// Always reserve at least one slot for a local session so remote sessions
+// can't completely push local monitoring off the board.
+function selectVisible(sessions, max) {
+  const sorted  = sortSessions(sessions);
+  const locals  = sorted.filter(s => s.source !== 'ssh');
+  const remotes = sorted.filter(s => s.source === 'ssh');
+
+  if (!locals.length) return remotes.slice(0, max);
+
+  // Guarantee the top local session, fill remaining slots with the global sort
+  const guaranteed = locals[0];
+  const rest = sorted.filter(s => s !== guaranteed).slice(0, max - 1);
+  return [guaranteed, ...rest];
+}
+
 function render(sessions) {
   _lastSessions = sessions;
   const list  = document.getElementById('card-list');
   const empty = document.getElementById('empty-state');
 
-  const visible = sortSessions(sessions).slice(0, maxSessions);
+  const visible = selectVisible(sessions, maxSessions);
 
   if (visible.length === 0) {
     list.innerHTML = '';

@@ -133,6 +133,59 @@ function createStateEditorWindow() {
   stateEditorWindow.on('closed', () => { stateEditorWindow = null; });
 }
 
+// If the user has a clipsRootFolder configured but the preset doesn't reflect it
+// (e.g. after default.json was reset), scan and apply it automatically.
+function autoRestoreClips() {
+  try {
+    const USER_CONFIG = path.join(__dirname, '../../config/user.json');
+    const PRESET_DIR  = path.join(__dirname, '../../config/presets');
+    const cfg    = JSON.parse(fs.readFileSync(USER_CONFIG, 'utf8'));
+    const folder = cfg.clipsRootFolder;
+    if (!folder) return;
+
+    const presetName = cfg.activePreset ?? 'default';
+    const presetPath = path.join(PRESET_DIR, `${presetName}.json`);
+    const preset     = JSON.parse(fs.readFileSync(presetPath, 'utf8'));
+
+    // Already matches — nothing to do
+    if (preset.clipsRootFolder === folder) return;
+
+    // Scan subdirs
+    const subdirs = fs.readdirSync(folder, { withFileTypes: true })
+      .filter(e => e.isDirectory()).map(e => e.name).sort();
+
+    function mapState(name) {
+      const l = name.toLowerCase();
+      if (l === 'idle' || l.startsWith('idle-')) return 'idle';
+      if (l === 'drag' || l.startsWith('drag-')) return 'drag';
+      if (['working', 'done', 'bored', 'attention'].includes(l)) return l;
+      return null;
+    }
+
+    const newClipDefs = {};
+    const stateClips  = {};
+    for (const name of subdirs) {
+      const state = mapState(name);
+      if (!state) continue;
+      newClipDefs[name] = { folder: `${folder}/${name}`, fps: 2.78, threePhase: true };
+      (stateClips[state] = stateClips[state] ?? []).push(name);
+    }
+    if (!Object.keys(newClipDefs).length) return;
+
+    preset.clipDefs        = newClipDefs;
+    preset.rootClipIds     = Object.keys(newClipDefs);
+    preset.clipsRootFolder = folder;
+    for (const state of Object.keys(preset.states ?? {})) {
+      preset.states[state].clips = stateClips[state] ?? [];
+    }
+
+    fs.writeFileSync(presetPath, JSON.stringify(preset, null, 2));
+    console.log(`[clips] Auto-restored clips from ${folder}`);
+  } catch (e) {
+    console.warn('[clips] Auto-restore skipped:', e.message);
+  }
+}
+
 app.whenReady().then(() => {
   createPetWindow();
   createTray();
@@ -162,6 +215,9 @@ app.whenReady().then(() => {
     else if (states.some(s => s === 'replied' || s === 'success')) global = 'success';
     notifyPetState(global);
   }
+
+  // Auto-restore user's clip root if preset was reset to defaults
+  autoRestoreClips();
 
   // Local monitor
   const monitor = new LocalMonitor();

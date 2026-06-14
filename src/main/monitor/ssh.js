@@ -17,12 +17,13 @@ class SSHMonitor extends EventEmitter {
   }
 
   connect() {
-    this._client = new Client();
+    this._client    = new Client();
+    this._initDone  = false; // guard: don't poll before init seeds file sizes
 
     this._client.on('ready', () => {
       this._connected = true;
       this.emit('connected', this._config.host);
-      this._initSessions(() => this._startPolling());
+      this._initSessions(() => { this._initDone = true; this._startPolling(); });
     });
 
     this._client.on('error', err => {
@@ -118,12 +119,21 @@ class SSHMonitor extends EventEmitter {
   }
 
   _poll() {
-    if (!this._connected) return;
+    if (!this._connected || !this._initDone) return;
     this._checkProcess();
     this._findJsonlFiles(files => {
       for (const f of files) {
-        if (!this._sessions.has(f)) this._sessions.set(f, this._newSession(f, 0));
-        this._checkFileGrowth(f);
+        if (!this._sessions.has(f)) {
+          // Seed file size from current remote size so we only read *future* changes,
+          // preventing old act/thinking log entries from triggering false active state.
+          this._exec(`wc -c < "${f}" 2>/dev/null`, szOut => {
+            if (!this._sessions.has(f)) {
+              this._sessions.set(f, this._newSession(f, parseInt(szOut.trim()) || 0));
+            }
+          });
+        } else {
+          this._checkFileGrowth(f);
+        }
       }
     });
   }
