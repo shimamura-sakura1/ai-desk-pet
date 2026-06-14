@@ -344,6 +344,40 @@ html, body {
   line-height: 1.5;
 }
 
+/* ── Add-state inline form ────────────────────────────────── */
+#add-state-form {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#add-state-form.hidden { display: none; }
+.add-state-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: #1a1a28;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 7px;
+  color: #d0d0e4;
+  font-size: 12px;
+  font-family: 'SF Mono', monospace;
+  outline: none;
+  transition: border-color 0.1s;
+}
+.add-state-input:focus { border-color: rgba(129,140,248,0.5); }
+#add-state-confirm {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px;
+  background: rgba(74,222,128,0.15);
+  border: 1px solid rgba(74,222,128,0.3);
+  border-radius: 6px;
+  color: #4ade80;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+#add-state-confirm:hover { background: rgba(74,222,128,0.25); }
+
 /* ── Custom state node extras ─────────────────────────────── */
 .node-delete-btn {
   background: none;

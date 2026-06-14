@@ -52,6 +52,11 @@
         <button class="btn" id="btn-add-state" style="width:100%;font-size:12px;margin-top:6px">
           + 新增自定义状态
         </button>
+        <div id="add-state-form" class="hidden">
+          <input id="add-state-input" type="text" class="add-state-input"
+                 placeholder="英文小写，如 dance">
+          <button class="btn btn-apply" id="add-state-confirm">确认添加</button>
+        </div>
       </div>
 
       <div id="prop-section" class="hidden">
@@ -96,6 +101,7 @@
 
   <div id="status-bar"></div>
 
+  <script src="../../lib/graph.js"></script>
   <script src="editor.js"></script>
 </body>
 </html>

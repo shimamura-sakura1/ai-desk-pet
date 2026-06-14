@@ -16,7 +16,7 @@ const STATE_LABELS = {
   drag:    '拖动  DRAG',
 };
 
-const CORE_STATES = ['idle', 'bored', 'working', 'done', 'drag'];
+// CORE_STATES and FIXED_TRANSITIONS are loaded from ../../lib/graph.js
 
 const CUSTOM_COLORS = [
   { bg: 'rgba(129,140,248,0.07)', border: '#818cf8', text: '#818cf8' },
@@ -27,15 +27,6 @@ const CUSTOM_COLORS = [
 ];
 
 const EDGE_COLORS = ['#818cf8', '#34d399', '#fb7185', '#fbbf24', '#a78bfa'];
-
-// Fixed state-machine transitions (not editable by user)
-const FIXED_TRANSITIONS = [
-  { from: 'idle',    to: 'bored',   label: 'idle timeout', bidir: true },
-  { from: 'idle',    to: 'working', label: 'Claude active' },
-  { from: 'bored',   to: 'working', label: 'Claude active' },
-  { from: 'working', to: 'done',    label: 'session done'  },
-  { from: 'done',    to: 'idle',    label: 'click / idle'  },
-];
 
 const NODE_W = 200;
 
@@ -80,55 +71,7 @@ function closeDrop() {
   if (_openDrop) { _openDrop.remove(); _openDrop = null; }
 }
 
-// ── Graph algorithms ──────────────────────────────────────────
-
-function canReachTarget(startId, targetId, edges) {
-  const visited = new Set();
-  const queue = [startId];
-  while (queue.length) {
-    const cur = queue.shift();
-    if (cur === targetId) return true;
-    if (visited.has(cur)) continue;
-    visited.add(cur);
-    for (const e of edges) {
-      if (e.from === cur && !visited.has(e.to)) queue.push(e.to);
-    }
-  }
-  return false;
-}
-
-function autoCompleteGraph(stateIds, allEdges, currentTransitions) {
-  // Step 1: Cleanup — drop auto edges that are now redundant
-  const nonAuto = currentTransitions.filter(t => !t.auto);
-  const result  = [...nonAuto];
-
-  for (const t of currentTransitions) {
-    if (!t.auto) continue;
-    const edgesWithout = [
-      ...FIXED_TRANSITIONS,
-      ...result.filter(x => !(x.from === t.from && x.to === t.to)),
-    ];
-    if (!canReachTarget(t.from, 'done', edgesWithout)) {
-      result.push(t); // still needed
-    }
-  }
-
-  // Step 2: Fill — add auto edges for custom states that can't reach done
-  const customStates = stateIds.filter(id => !CORE_STATES.includes(id));
-  for (const id of customStates) {
-    const current = [...FIXED_TRANSITIONS, ...result];
-    if (!canReachTarget(id, 'done', current)) {
-      result.push({ from: id, to: 'done', label: 'auto', auto: true });
-    }
-  }
-
-  // Step 3: Main axis safety — ensure done→idle path exists
-  if (!canReachTarget('done', 'idle', [...FIXED_TRANSITIONS, ...result])) {
-    result.push({ from: 'done', to: 'idle', label: 'auto', auto: true });
-  }
-
-  return result;
-}
+// canReachTarget and autoCompleteGraph are loaded from ../../lib/graph.js
 
 function runAutoComplete() {
   if (!preset) return;
@@ -190,11 +133,18 @@ function renderNodes() {
       ? 'display:flex;justify-content:space-between;align-items:center'
       : '';
 
+    // Show connect button on all nodes (core nodes use it to connect to custom states)
+    const allEdgesNow = [...FIXED_TRANSITIONS, ...(preset.transitions ?? [])];
+    const alreadyOut  = new Set(allEdgesNow.filter(e => e.from === sid).map(e => e.to));
+    const hasTargets  = Object.keys(preset.states ?? {}).some(
+      id => id !== sid && !alreadyOut.has(id)
+    );
+
     node.innerHTML = `
       <div class="node-header" style="${headerStyle}">${headerInner}</div>
       <div class="node-clips">${clipRows}</div>
       <button class="node-add" data-sid="${sid}">+ 添加 Clip</button>
-      ${isCustom ? `<button class="node-connect-btn" data-sid="${esc(sid)}">→ 连接至…</button>` : ''}`;
+      ${hasTargets ? `<button class="node-connect-btn" data-sid="${esc(sid)}">→ 连接至…</button>` : ''}`;
 
     canvas.appendChild(node);
 
@@ -241,13 +191,13 @@ function renderNodes() {
       showDropdown(sid, node.querySelector('.node-add'));
     });
 
-    if (isCustom) {
-      // Connect to another state
-      node.querySelector('.node-connect-btn').addEventListener('click', ev => {
-        ev.stopPropagation();
-        showConnectDropdown(sid, node.querySelector('.node-connect-btn'));
-      });
+    // Connect button (present on any node that has connectable targets)
+    node.querySelector('.node-connect-btn')?.addEventListener('click', ev => {
+      ev.stopPropagation();
+      showConnectDropdown(sid, node.querySelector('.node-connect-btn'));
+    });
 
+    if (isCustom) {
       // Delete this custom state
       node.querySelector('.node-delete-btn').addEventListener('click', ev => {
         ev.stopPropagation();
@@ -577,16 +527,31 @@ document.getElementById('btn-help').addEventListener('click', ev => {
 // ── Add custom state ──────────────────────────────────────────
 
 document.getElementById('btn-add-state').addEventListener('click', () => {
-  const name = prompt('请输入自定义状态名称（英文小写，如 dance）:');
-  if (!name) return;
-  const sid = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  const form = document.getElementById('add-state-form');
+  form.classList.toggle('hidden');
+  if (!form.classList.contains('hidden')) {
+    document.getElementById('add-state-input').focus();
+  }
+});
+
+function doAddState() {
+  const input = document.getElementById('add-state-input');
+  const sid   = input.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
   if (!sid) { status('状态名无效', false); return; }
   if (preset.states[sid]) { status('状态名已存在', false); return; }
   preset.states[sid] = { clips: [], mode: 'random' };
   const customCount = Object.keys(preset.states).filter(k => !CORE_STATES.includes(k)).length;
   preset.layout[sid] = { x: 80 + customCount * 30, y: 280 + customCount * 40 };
+  input.value = '';
+  document.getElementById('add-state-form').classList.add('hidden');
   runAutoComplete();
   status(`已添加状态: ${sid}`);
+}
+
+document.getElementById('add-state-confirm').addEventListener('click', doAddState);
+document.getElementById('add-state-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter')  doAddState();
+  if (e.key === 'Escape') document.getElementById('add-state-form').classList.add('hidden');
 });
 
 // ── Add custom clip ───────────────────────────────────────────
