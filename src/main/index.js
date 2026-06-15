@@ -192,9 +192,12 @@ function autoRestoreClips() {
 
     function mapState(name) {
       const l = name.toLowerCase();
-      if (l === 'idle' || l.startsWith('idle-')) return 'idle';
-      if (l === 'drag' || l.startsWith('drag-')) return 'drag';
-      if (['working', 'done', 'bored', 'attention'].includes(l)) return l;
+      if (l === 'idle'      || l.startsWith('idle-'))      return 'idle';
+      if (l === 'drag'      || l.startsWith('drag-'))      return 'drag';
+      if (l === 'working'   || l.startsWith('working-'))   return 'working';
+      if (l === 'done'      || l.startsWith('done-'))      return 'done';
+      if (l === 'bored'     || l.startsWith('bored-'))     return 'bored';
+      if (l === 'attention' || l.startsWith('attention-')) return 'attention';
       return null;
     }
 
@@ -278,9 +281,9 @@ app.whenReady().then(() => {
     // Recompute global state from merged sessions
     const states = all.map(s => s.state);
     let global = 'sleep';
-    if (states.some(s => s === 'require_action' || s === 'alert' || s === 'replied')) global = 'require_action';
-    else if (states.some(s => s === 'act' || s === 'thinking'))                        global = 'act';
-    else if (states.some(s => s === 'success'))                                        global = 'success';
+    if (states.some(s => s === 'require_action' || s === 'alert'))   global = 'require_action';
+    else if (states.some(s => s === 'act' || s === 'thinking'))      global = 'act';
+    else if (states.some(s => s === 'replied' || s === 'success'))   global = 'success';
     notifyPetState(global);
   }
 

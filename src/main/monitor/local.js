@@ -22,7 +22,10 @@ class LocalMonitor extends EventEmitter {
 
   stop() {
     clearInterval(this._pollTimer);
-    this._sessions.forEach(s => clearTimeout(s.inactivityTimer));
+    this._sessions.forEach(s => {
+      clearTimeout(s.inactivityTimer);
+      clearTimeout(s._batchPermTimer);
+    });
   }
 
   getSessions() {
@@ -94,13 +97,61 @@ class LocalMonitor extends EventEmitter {
   }
 
   _parseChunk(chunk, session) {
-    let changed = false;
+    let changed        = false;
+    let batchPermGap   = 0;   // ms gap when tool_use+result arrive in same chunk
+    let lastToolUseTs  = null;
+
     for (const line of chunk.split('\n').filter(l => l.trim())) {
       try {
         session.messageCount = (session.messageCount || 0) + 1;
-        if (this._handleEntry(JSON.parse(line), session)) changed = true;
+        const entry = JSON.parse(line);
+
+        // Track whether a tool_use and its tool_result land in the same chunk.
+        // Claude Code batches both writes to disk after the user approves, so
+        // the monitor never sees tool_use alone. Detect this by timestamp gap.
+        if (entry.type === 'assistant') {
+          const c = entry.message?.content;
+          lastToolUseTs = (Array.isArray(c) && c.some(x => x.type === 'tool_use'))
+            ? (entry.timestamp ?? null) : null;
+        } else if (entry.type === 'user' && entry.toolUseResult !== undefined) {
+          if (lastToolUseTs && entry.timestamp) {
+            const gap = new Date(entry.timestamp).getTime() - new Date(lastToolUseTs).getTime();
+            if (gap >= 3000) batchPermGap = gap;
+          }
+          lastToolUseTs = null;
+        }
+
+        if (this._handleEntry(entry, session)) changed = true;
       } catch {}
     }
+
+    // Batch-write detected: permission was required but both entries landed
+    // together. Show require_action briefly so board/pet reflect what happened,
+    // then transition to act after a short hold.
+    if (batchPermGap > 0 && session.state === 'act') {
+      session.state       = 'require_action';
+      session.lastMessage = 'Claude needed your permission';
+      this._emitUpdate();
+
+      clearTimeout(session._batchPermTimer);
+      session._batchPermTimerId = (session._batchPermTimerId ?? 0) + 1;
+      const timerId = session._batchPermTimerId;
+      const self = this;
+      session._batchPermTimer = setTimeout(() => {
+        if (session.state === 'require_action' && session._batchPermTimerId === timerId) {
+          session.state       = 'act';
+          session.lastMessage = 'Running…';
+          session.lastActiveAt = Date.now();
+          clearTimeout(session.inactivityTimer);
+          session.inactivityTimer = setTimeout(() => {
+            session.state = 'sleep'; session.lastMessage = ''; self._emitUpdate();
+          }, INACTIVITY_MS);
+          self._emitUpdate();
+        }
+      }, 1500);
+      return; // require_action already emitted; act will follow via timer
+    }
+
     if (changed) this._emitUpdate();
   }
 
@@ -207,7 +258,8 @@ class LocalMonitor extends EventEmitter {
     } catch {}
 
     return { id, name, project, state: 'sleep', lastMessage, filePath,
-             inactivityTimer: null, createdAt, lastActiveAt, messageCount: 0 };
+             inactivityTimer: null, _batchPermTimer: null, _batchPermTimerId: 0,
+             createdAt, lastActiveAt, messageCount: 0 };
   }
 
   _findJsonl(dir) {
@@ -239,11 +291,11 @@ class LocalMonitor extends EventEmitter {
     let globalState = 'sleep';
     // Priority: attention > working > done > sleep
     // replied = Claude asked/responded, waiting for user → same priority as require_action
-    if (states.some(s => s === 'require_action' || s === 'alert' || s === 'replied')) {
+    if (states.some(s => s === 'require_action' || s === 'alert')) {
       globalState = 'require_action';
     } else if (states.some(s => s === 'act' || s === 'thinking')) {
       globalState = 'act';
-    } else if (states.some(s => s === 'success')) {
+    } else if (states.some(s => s === 'replied' || s === 'success')) {
       globalState = 'success';
     }
     this.emit('state', globalState);

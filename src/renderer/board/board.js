@@ -33,13 +33,14 @@ function stateInfo(state) {
     case 'require_action': return { cls: 'alert',    dot: 'dot-alert'    };
     case 'thinking':       return { cls: 'thinking', dot: 'dot-thinking' };
     case 'act':            return { cls: 'active',   dot: 'dot-active'   };
-    case 'replied':        return { cls: 'active',   dot: 'dot-active'   };
+    case 'replied':        return { cls: 'done',     dot: 'dot-done'     };
+    case 'success':        return { cls: 'done',     dot: 'dot-done'     };
     default:               return { cls: 'sleep',    dot: 'dot-sleep'    };
   }
 }
 
 function sortSessions(sessions) {
-  const rank = { require_action: 3, thinking: 2, act: 2, replied: 1, sleep: 0 };
+  const rank = { require_action: 3, thinking: 2, act: 2, replied: 1, success: 1, sleep: 0 };
   return [...sessions].sort((a, b) => {
     const dr = (rank[b.state] ?? 0) - (rank[a.state] ?? 0);
     if (dr !== 0) return dr;
@@ -147,27 +148,12 @@ function calcHeight(visible) {
 
 // ── Render ──────────────────────────────────────────────────────
 
-// Always reserve at least one slot for a local session so remote sessions
-// can't completely push local monitoring off the board.
-function selectVisible(sessions, max) {
-  const sorted  = sortSessions(sessions);
-  const locals  = sorted.filter(s => s.source !== 'ssh');
-  const remotes = sorted.filter(s => s.source === 'ssh');
-
-  if (!locals.length) return remotes.slice(0, max);
-
-  // Guarantee the top local session, fill remaining slots with the global sort
-  const guaranteed = locals[0];
-  const rest = sorted.filter(s => s !== guaranteed).slice(0, max - 1);
-  return [guaranteed, ...rest];
-}
-
 function render(sessions) {
   _lastSessions = sessions;
   const list  = document.getElementById('card-list');
   const empty = document.getElementById('empty-state');
 
-  const visible = selectVisible(sessions, maxSessions);
+  const visible = sortSessions(sessions).slice(0, maxSessions);
 
   if (visible.length === 0) {
     list.innerHTML = '';

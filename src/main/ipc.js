@@ -8,6 +8,19 @@ const USER_CONFIG_PATH = path.join(__dirname, '../../config/user.json');
 const PRESET_DIR       = path.join(__dirname, '../../config/presets');
 const APP_ROOT         = path.join(__dirname, '../..');
 
+const DEFAULT_USER_CONFIG = {
+  activePreset: 'default',
+  clipsRootFolder: path.join(APP_ROOT, 'assets/clips'),
+  pet:     { activePet: 'default', size: 120 },
+  monitor: { localLogDir: '', pollIntervalMs: 2000 },
+  board:   { maxSessions: 3 },
+  ssh:     [],
+};
+
+if (!fs.existsSync(USER_CONFIG_PATH)) {
+  fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(DEFAULT_USER_CONFIG, null, 2));
+}
+
 // SSH credentials stored outside the git repo — never committed
 const SSH_CREDS_DIR  = path.join(os.homedir(), '.ai-desk-pet');
 const SSH_CREDS_PATH = path.join(SSH_CREDS_DIR, 'credentials.json');
