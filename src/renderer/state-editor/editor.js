@@ -650,38 +650,62 @@ document.getElementById('btn-apply').addEventListener('click', async () => {
 let _debugActiveState = null;
 let _debugActiveClip  = null;
 
+// Short labels for compact chips (no English suffix)
+const CHIP_LABELS = {
+  idle:      '待机',
+  bored:     '无聊',
+  working:   '工作中',
+  done:      '完成',
+  drag:      '拖动',
+  attention: '等待回应',
+};
+
 function renderDebugPanel() {
   const list = document.getElementById('debug-state-list');
   if (!list || !preset) return;
 
-  const customKeys = Object.keys(preset.states ?? {}).filter(k => !CORE_STATES.includes(k));
+  const entries    = Object.entries(preset.states ?? {});
+  const customKeys = entries.map(([k]) => k).filter(k => !CORE_STATES.includes(k));
 
-  list.innerHTML = Object.entries(preset.states ?? {}).map(([sid, def]) => {
+  // Chip grid
+  const chipsHtml = entries.map(([sid, def]) => {
     const isCustom  = !CORE_STATES.includes(sid);
     const customIdx = isCustom ? customKeys.indexOf(sid) : 0;
     const colors    = STATE_COLORS[sid] ?? CUSTOM_COLORS[customIdx % CUSTOM_COLORS.length];
     const clips     = def.clips ?? [];
     const isActive  = _debugActiveState === sid;
-
-    const clipListHtml = isActive && clips.length > 0 ? `
-      <div class="debug-clip-list">
-        ${clips.map(cid => `<div class="debug-clip-item${_debugActiveClip === cid ? ' debug-clip-active' : ''}" data-cid="${esc(cid)}">${esc(cid)}</div>`).join('')}
-      </div>` : '';
+    const label     = CHIP_LABELS[sid] ?? sid;
+    const fullLabel = STATE_LABELS[sid] ?? sid;
 
     return `
-      <div class="debug-state-item">
-        <button class="debug-state-btn${isActive ? ' debug-active' : ''}"
-                data-sid="${esc(sid)}"
-                style="border-color:${colors.border};${isActive ? `background:${colors.bg};` : ''}"
-                ${clips.length === 0 ? 'disabled title="无 Clip，无法预览"' : ''}>
-          <span class="debug-state-label" style="color:${colors.text}">${esc(STATE_LABELS[sid] ?? sid)}</span>
-          <span class="debug-clip-count">${clips.length > 0 ? `×${clips.length}` : '空'}</span>
-        </button>
-        ${clipListHtml}
-      </div>`;
+      <button class="debug-chip${isActive ? ' debug-active' : ''}"
+              data-sid="${esc(sid)}"
+              title="${esc(fullLabel)}"
+              style="border-color:${colors.border};${isActive ? `background:${colors.bg};` : ''}"
+              ${clips.length === 0 ? 'disabled' : ''}>
+        <span class="debug-chip-dot" style="background:${colors.text}"></span>
+        <span class="debug-chip-label" style="color:${colors.text}">${esc(label)}</span>
+        <span class="debug-chip-count">${clips.length > 0 ? `×${clips.length}` : '空'}</span>
+      </button>`;
   }).join('');
 
-  list.querySelectorAll('.debug-state-btn:not([disabled])').forEach(btn => {
+  // Active clip list below grid
+  let clipListHtml = '';
+  if (_debugActiveState) {
+    const clips = preset.states[_debugActiveState]?.clips ?? [];
+    if (clips.length > 0) {
+      clipListHtml = `
+        <div class="debug-active-clips">
+          ${clips.map(cid => `
+            <div class="debug-clip-item${_debugActiveClip === cid ? ' debug-clip-active' : ''}"
+                 data-cid="${esc(cid)}">${esc(cid)}</div>`).join('')}
+        </div>`;
+    }
+  }
+
+  list.innerHTML = `<div class="debug-chips-grid">${chipsHtml}</div>${clipListHtml}`;
+
+  list.querySelectorAll('.debug-chip:not([disabled])').forEach(btn => {
     btn.addEventListener('click', () => {
       const sid = btn.dataset.sid;
       _debugActiveState = _debugActiveState === sid ? null : sid;

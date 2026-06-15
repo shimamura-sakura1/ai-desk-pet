@@ -29,6 +29,7 @@ async function load() {
 
   document.getElementById('localLogDir').value = cfg.monitor?.localLogDir ?? '';
   document.getElementById('pollInterval').value = cfg.monitor?.pollIntervalMs ?? 2000;
+  document.getElementById('maxSessions').value  = cfg.board?.maxSessions ?? 3;
   const savedRoot = cfg.clipsRootFolder ?? '';
   if (savedRoot) {
     document.getElementById('clipsRoot').value = savedRoot;
@@ -99,8 +100,12 @@ document.querySelectorAll('.tab').forEach(tab => {
 // 保存监控配置
 document.getElementById('btn-save-monitor').addEventListener('click', async () => {
   cfg.monitor = {
-    localLogDir: document.getElementById('localLogDir').value.trim(),
+    localLogDir:   document.getElementById('localLogDir').value.trim(),
     pollIntervalMs: Number(document.getElementById('pollInterval').value),
+  };
+  cfg.board = {
+    ...cfg.board,
+    maxSessions: Math.max(1, Number(document.getElementById('maxSessions').value) || 3),
   };
   await window.settingsBridge.saveConfig(cfg);
   setStatus('status-monitor', '已保存', true);
@@ -171,9 +176,12 @@ let _detectedClips = [];
 
 function mapClipNameToState(name) {
   const lower = name.toLowerCase();
-  if (lower === 'idle' || lower.startsWith('idle-')) return 'idle';
-  if (lower === 'drag' || lower.startsWith('drag-')) return 'drag';
-  if (['working', 'done', 'bored', 'attention'].includes(lower)) return lower;
+  if (lower === 'idle'      || lower.startsWith('idle-'))      return 'idle';
+  if (lower === 'drag'      || lower.startsWith('drag-'))      return 'drag';
+  if (lower === 'working'   || lower.startsWith('working-'))   return 'working';
+  if (lower === 'done'      || lower.startsWith('done-'))      return 'done';
+  if (lower === 'bored'     || lower.startsWith('bored-'))     return 'bored';
+  if (lower === 'attention' || lower.startsWith('attention-')) return 'attention';
   return null;
 }
 
@@ -275,7 +283,8 @@ document.getElementById('btn-apply-clips')?.addEventListener('click', async () =
   await window.settingsBridge.savePreset(preset);
   cfg.clipsRootFolder = folder;
   await window.settingsBridge.saveConfig(cfg);
-  const msg = rootChanged ? '已重置 Clip 库并应用新根目录，重启宠物生效' : '已更新 Clip 库，重启宠物生效';
+  window.settingsBridge.applyPreset();
+  const msg = rootChanged ? '已重置 Clip 库并应用新根目录' : '已更新 Clip 库';
   setStatus('status-actions', msg, true);
   setTimeout(() => setStatus('status-actions', '', true), 3000);
 });

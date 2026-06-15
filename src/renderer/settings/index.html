@@ -162,6 +162,10 @@
       <input id="localLogDir" type="text" placeholder="留空自动检测"></div>
     <div class="field"><label>轮询间隔（毫秒）</label>
       <input id="pollInterval" type="number" value="2000" min="500"></div>
+    <hr>
+    <h3>Session 面板</h3>
+    <div class="field"><label>最多显示 Session 数量（按活跃度排序）</label>
+      <input id="maxSessions" type="number" value="3" min="1" max="10" style="width:100px"></div>
     <button class="btn btn-primary" id="btn-save-monitor">保存</button>
     <div class="status" id="status-monitor"></div>
   </div>

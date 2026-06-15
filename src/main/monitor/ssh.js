@@ -96,8 +96,10 @@ class SSHMonitor extends EventEmitter {
   }
 
   _findJsonlFiles(cb) {
+    // Only watch files modified in the last 60 minutes — prevents stale sessions
+    // from old tmux/background Claude processes from showing as active.
     this._exec(
-      `find "${REMOTE_LOG_DIR}" -name "*.jsonl" 2>/dev/null | grep -v "/subagents/"`,
+      `find "${REMOTE_LOG_DIR}" -name "*.jsonl" -mmin -60 2>/dev/null | grep -v "/subagents/"`,
       out => cb(out.split('\n').map(l => l.trim()).filter(l => l.endsWith('.jsonl')))
     );
   }
@@ -139,7 +141,8 @@ class SSHMonitor extends EventEmitter {
   }
 
   _checkProcess() {
-    this._exec('ps -axo comm= | grep -c "[c]laude" 2>/dev/null || echo 0', out => {
+    // Use POSIX ps -eo (works on both Linux and macOS remote hosts)
+    this._exec('ps -eo comm= 2>/dev/null | grep -c "^claude$" || echo 0', out => {
       if ((parseInt(out.trim()) || 0) > 0) return;
       let changed = false;
       for (const s of this._sessions.values()) {
@@ -215,10 +218,12 @@ class SSHMonitor extends EventEmitter {
     if (msg !== null) session.lastMessage = msg;
     session.lastActiveAt = Date.now();
     clearTimeout(session.inactivityTimer);
-    session.inactivityTimer = setTimeout(() => {
-      session.state = 'sleep';
-      this._emitUpdate();
-    }, INACTIVITY_MS);
+    if (nextState !== 'require_action' && nextState !== 'alert' && nextState !== 'replied') {
+      session.inactivityTimer = setTimeout(() => {
+        session.state = 'sleep';
+        this._emitUpdate();
+      }, INACTIVITY_MS);
+    }
     return true;
   }
 
