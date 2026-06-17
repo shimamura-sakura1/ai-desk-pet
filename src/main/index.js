@@ -35,8 +35,12 @@ function createPetWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-  petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  petWindow.setAlwaysOnTop(true, 'floating');
+  if (process.platform === 'darwin') {
+    petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    petWindow.setAlwaysOnTop(true, 'floating');
+  } else {
+    petWindow.setAlwaysOnTop(true);
+  }
   petWindow.loadFile(path.join(__dirname, '../renderer/pet/index.html'));
 }
 
@@ -72,8 +76,12 @@ function createBoardWindow() {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-  boardWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  boardWindow.setAlwaysOnTop(true, 'floating');
+  if (process.platform === 'darwin') {
+    boardWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    boardWindow.setAlwaysOnTop(true, 'floating');
+  } else {
+    boardWindow.setAlwaysOnTop(true);
+  }
   boardWindow.loadFile(path.join(__dirname, '../renderer/board/index.html'));
   boardWindow.on('closed', () => { boardWindow = null; });
 
@@ -109,8 +117,12 @@ function createDebugPetWindow(pendingState = null) {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-  debugPetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  debugPetWindow.setAlwaysOnTop(true, 'floating');
+  if (process.platform === 'darwin') {
+    debugPetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    debugPetWindow.setAlwaysOnTop(true, 'floating');
+  } else {
+    debugPetWindow.setAlwaysOnTop(true);
+  }
   debugPetWindow.loadFile(path.join(__dirname, '../renderer/pet/index.html'), { hash: 'debug' });
   debugPetWindow.webContents.once('did-finish-load', () => {
     if (!debugPetWindow || debugPetWindow.isDestroyed()) return;
@@ -349,5 +361,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // macOS and Windows: keep running via tray. Linux: quit.
+  if (process.platform === 'linux') app.quit();
 });

@@ -4,6 +4,26 @@ const path = require('path');
 const os   = require('os');
 const { exec } = require('child_process');
 
+// Returns a Set of running process names (without .exe on Windows).
+function getRunningProcesses(cb) {
+  if (process.platform === 'win32') {
+    exec('tasklist /FO CSV /NH', (err, stdout) => {
+      if (err) { cb(new Set()); return; }
+      const names = new Set(
+        stdout.split('\n')
+          .map(l => l.split(',')[0]?.replace(/"/g, '').replace(/\.exe$/i, '').trim())
+          .filter(Boolean)
+      );
+      cb(names);
+    });
+  } else {
+    exec('ps -axco command=', (err, stdout) => {
+      if (err) { cb(new Set()); return; }
+      cb(new Set(stdout.split('\n').map(l => l.trim()).filter(Boolean)));
+    });
+  }
+}
+
 const USER_CONFIG_PATH = path.join(__dirname, '../../config/user.json');
 const PRESET_DIR       = path.join(__dirname, '../../config/presets');
 const APP_ROOT         = path.join(__dirname, '../..');
@@ -89,16 +109,21 @@ function decodeRemotePath(encodedDir, username) {
 }
 
 function openSSHInTerminal({ sshCmd }) {
-  exec('ps -axco command=', (err, stdout) => {
-    const procs = new Set(stdout.split('\n').map(l => l.trim()));
-
+  if (process.platform === 'win32') {
+    // Windows: try Windows Terminal, then PowerShell, then cmd
+    const q = sshCmd.replace(/"/g, '\\"');
+    exec(`wt -- ${sshCmd}`, err => {
+      if (err) exec(`powershell.exe -NoExit -Command "${q}"`);
+    });
+    return;
+  }
+  // macOS: bring existing terminal to front; only open new window if nothing is running
+  getRunningProcesses(procs => {
     if (procs.has('iTerm2') || procs.has('iTerm')) {
-      // Terminal is already running with the SSH session — just bring it to front
       exec(`osascript -e 'tell app "iTerm" to activate'`);
     } else if (procs.has('Terminal')) {
       exec(`osascript -e 'tell app "Terminal" to activate'`);
     } else {
-      // No terminal running at all — open a new SSH window
       const tmpScript = path.join(os.tmpdir(), 'ai-desk-pet-ssh.command');
       fs.writeFileSync(tmpScript, `#!/bin/sh\n${sshCmd}\n`, { mode: 0o755 });
       exec(`open "${tmpScript}"`);
@@ -268,32 +293,47 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEdi
       return;
     }
 
-    // Local session: try IDE first, fall back to Terminal.app
+    // Local session: try IDE first, fall back to terminal
     const localParts   = filePath.split(path.sep);
     const encodedDir2  = localParts[localParts.length - 2] ?? '';
     const projectPath2 = decodeProjectPath(encodedDir2);
     if (!projectPath2) { shell.showItemInFolder(filePath); return; }
 
-    exec('ps -axco command=', (err, stdout) => {
-      const procs = new Set(stdout.split('\n').map(l => l.trim()));
-      const ALL_APPS = [
-        { proc: 'Code',   app: 'Visual Studio Code' },
-        { proc: 'Cursor', app: 'Cursor'              },
-      ];
-      const running    = ALL_APPS.filter(a => procs.has(a.proc)).map(a => a.app);
-      const notRunning = ALL_APPS.filter(a => !procs.has(a.proc)).map(a => a.app);
-      const tryApps    = [...running, ...notRunning];
+    if (process.platform === 'win32') {
+      // Windows: try IDE CLIs, then Windows Terminal, then explorer
+      const q = projectPath2.replace(/"/g, '\\"');
+      exec(`code "${q}"`, e1 => {
+        if (!e1) return;
+        exec(`cursor "${q}"`, e2 => {
+          if (!e2) return;
+          exec(`wt --startingDirectory "${q}"`, e3 => {
+            if (!e3) return;
+            shell.openPath(projectPath2);
+          });
+        });
+      });
+    } else {
+      // macOS: prefer running IDE, fall back to Terminal.app
+      getRunningProcesses(procs => {
+        const ALL_APPS = [
+          { proc: 'Code',   app: 'Visual Studio Code' },
+          { proc: 'Cursor', app: 'Cursor'              },
+        ];
+        const running    = ALL_APPS.filter(a => procs.has(a.proc)).map(a => a.app);
+        const notRunning = ALL_APPS.filter(a => !procs.has(a.proc)).map(a => a.app);
+        const tryApps    = [...running, ...notRunning];
 
-      let tried = 0;
-      const attempt = () => {
-        if (tried >= tryApps.length) {
-          exec(`open -a Terminal "${projectPath2.replace(/"/g, '\\"')}"`);
-          return;
-        }
-        exec(`open -a "${tryApps[tried++]}" "${projectPath2}"`, e => { if (e) attempt(); });
-      };
-      attempt();
-    });
+        let tried = 0;
+        const attempt = () => {
+          if (tried >= tryApps.length) {
+            exec(`open -a Terminal "${projectPath2.replace(/"/g, '\\"')}"`);
+            return;
+          }
+          exec(`open -a "${tryApps[tried++]}" "${projectPath2}"`, e => { if (e) attempt(); });
+        };
+        attempt();
+      });
+    }
   });
 
   ipcMain.on('board:resize', (_e, h) => {

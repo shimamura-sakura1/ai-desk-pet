@@ -109,9 +109,7 @@ class LocalMonitor extends EventEmitter {
   }
 
   _checkProcesses() {
-    exec('ps -axo comm=', (err, stdout) => {
-      if (err) return;
-      const running = stdout.split('\n').some(l => l.trim() === 'claude');
+    const check = (running) => {
       if (!running) {
         let changed = false;
         for (const s of this._sessions.values()) {
@@ -119,7 +117,18 @@ class LocalMonitor extends EventEmitter {
         }
         if (changed) this._emitUpdate();
       }
-    });
+    };
+    if (process.platform === 'win32') {
+      exec('tasklist /FO CSV /NH', (err, stdout) => {
+        if (err) return;
+        check(stdout.split('\n').some(l => l.toLowerCase().startsWith('"claude.exe"')));
+      });
+    } else {
+      exec('ps -axo comm=', (err, stdout) => {
+        if (err) return;
+        check(stdout.split('\n').some(l => l.trim() === 'claude'));
+      });
+    }
   }
 
   _checkLogs() {

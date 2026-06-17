@@ -1,12 +1,14 @@
 {
   "name": "ai-desk-pet",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "桌面宠物形态的 AI 助手监控工具",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder --mac dmg",
+    "build:win": "electron-builder --win",
+    "build:all": "electron-builder --mac dmg --win",
     "test": "jest"
   },
   "keywords": [
@@ -41,6 +43,30 @@
         }
       ],
       "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "dmg": {
       "title": "AI桌宠 ${version}",
