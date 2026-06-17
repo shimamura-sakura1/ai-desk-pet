@@ -1,3 +1,7 @@
+# Local analysis docs
+STATE_ANALYSIS.md
+watch-claude-dir.js
+
 # Hidden directories
 charactor/
 .claude/

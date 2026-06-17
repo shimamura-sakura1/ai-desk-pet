@@ -4,6 +4,7 @@
 const BORED_DURATION = 5000;
 const LONG_PRESS_MS  = 600;
 const DRAG_THRESH    = 8;     // px of movement to trigger drag early
+const DONE_CYCLES    = 3;
 
 // ============================================================
 // DOM  ── dual img crossfade (prevents transparent-window flicker)
@@ -55,6 +56,7 @@ let _isFinishedLocked  = false;
 let _isAttentionLocked = false;
 let _isBored           = false;
 let _boredTimer        = null;
+let _doneTimer         = null;
 
 function _targetState() {
   if (_debugState) return _debugState;
@@ -145,6 +147,21 @@ function _startClip(clipId, initPhase) {
   });
 }
 
+function _scheduleDoneExit(clipId) {
+  clearTimeout(_doneTimer);
+  const clip = _clips[clipId];
+  if (!clip) return;
+  const N = clip.imgs.length;
+  const loopFrames = clip.threePhase ? Math.max(1, N - 2) : N;
+  const ms = Math.min((loopFrames / clip.fps) * 1000 * DONE_CYCLES, 30_000);
+  _doneTimer = setTimeout(() => {
+    if (_isFinishedLocked) {
+      _isFinishedLocked = false;
+      window.petBridge.notifyDoneComplete();
+    }
+  }, Math.max(ms, 2000));
+}
+
 function _enterState(newState) {
   _curState = newState;
   _pending  = null;
@@ -153,6 +170,8 @@ function _enterState(newState) {
   const clip   = _clips[id];
   const phase  = (clip?.threePhase && clip.imgs.length >= 3) ? 'intro' : 'loop';
   _startClip(id, phase);
+  if (newState === 'done') _scheduleDoneExit(id);
+  else clearTimeout(_doneTimer);
 }
 
 // ============================================================
@@ -240,6 +259,7 @@ function onSessionChange(status) {
     _isAttentionLocked = false;
     _isBored = false;
     clearTimeout(_boredTimer);
+    clearTimeout(_doneTimer);
   } else if (status === 'attention') {
     _isAttentionLocked = true;
     _isFinishedLocked  = false;
@@ -251,15 +271,15 @@ function onSessionChange(status) {
     _isBored = false;
     clearTimeout(_boredTimer);
   } else if (status === 'idle') {
-    // Session went to sleep — clear locked states
     _isAttentionLocked = false;
+    _isFinishedLocked  = false;
+    clearTimeout(_doneTimer);
   }
 }
 
 function _onPetClick() {
   if (_isAttentionLocked) {
-    _isAttentionLocked = false;
-    return;
+    return; // attention 只由授权完成解锁，点击宠物不能解除
   }
   if (_isFinishedLocked) {
     _isFinishedLocked = false;

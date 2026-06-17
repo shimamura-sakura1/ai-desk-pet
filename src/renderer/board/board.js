@@ -112,9 +112,10 @@ function buildCard(s, isExpanded) {
       Claude 已完成，等待下一步指令
     </div>` : '';
   const openBtn = s.filePath ? `
-    <button class="detail-open" data-filepath="${esc(s.filePath)}">
-      跳转到项目
-    </button>` : '';
+    <button class="detail-open"
+      data-filepath="${esc(s.filePath)}"
+      data-source="${esc(s.source ?? 'local')}"
+      data-sid="${esc(s.id)}">跳转到项目</button>` : '';
 
   return `
     <div class="card card-${info.cls} expanded" data-id="${esc(s.id)}" role="button" tabindex="0">
@@ -158,6 +159,7 @@ function render(sessions) {
   if (visible.length === 0) {
     list.innerHTML = '';
     empty.classList.remove('hidden');
+    document.getElementById('app').classList.remove('has-alert');
     window.petBridge.boardResize(72);
     return;
   }
@@ -167,6 +169,9 @@ function render(sessions) {
   if (expandedId && !visible.find(s => s.id === expandedId)) expandedId = null;
 
   list.innerHTML = visible.map(s => buildCard(s, s.id === expandedId)).join('');
+
+  const hasAlert = visible.some(s => s.state === 'require_action');
+  document.getElementById('app').classList.toggle('has-alert', hasAlert);
 
   // Card click: toggle expand (collapse if same, expand if different)
   for (const card of list.querySelectorAll('.card')) {
@@ -187,7 +192,11 @@ function render(sessions) {
   for (const btn of list.querySelectorAll('.detail-open')) {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      window.petBridge.openProject(btn.dataset.filepath);
+      window.petBridge.openProject({
+        filePath:  btn.dataset.filepath,
+        source:    btn.dataset.source,
+        sessionId: btn.dataset.sid,
+      });
     });
   }
 

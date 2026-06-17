@@ -205,9 +205,8 @@ function autoRestoreClips() {
     const stateClips  = {};
     for (const name of subdirs) {
       const state = mapState(name);
-      if (!state) continue;
       newClipDefs[name] = { folder: `${folder}/${name}`, fps: 2.78, threePhase: true };
-      (stateClips[state] = stateClips[state] ?? []).push(name);
+      if (state) (stateClips[state] = stateClips[state] ?? []).push(name);
     }
     if (!Object.keys(newClipDefs).length) return;
 
@@ -258,6 +257,29 @@ app.whenReady().then(() => {
     createDebugPetWindow,
     createSettingsWindow,
     createStateEditorWindow,
+    getStateEditorWindow: () => stateEditorWindow,
+    onDoneComplete: () => monitor.clearReplied(),
+    onReconnectSSH: (idx) => {
+      const creds = [];
+      try { creds.push(...JSON.parse(fs.readFileSync(SSH_CREDS_PATH, 'utf8'))); } catch {}
+      const cred = creds[idx];
+      if (!cred) return Promise.resolve({ ok: false, error: '凭据不存在' });
+      const old = _sshMonitors[idx];
+      if (old) { try { old.disconnect(); } catch {} }
+      const id = `ssh:${cred.host}:${cred.port ?? 22}`;
+      const m = new SSHMonitor(cred);
+      _sshMonitors[idx] = m;
+      m.on('sessions',     ss  => onMonitorUpdate(id, ss));
+      m.on('disconnected', ()  => { _allSessions.delete(id); onMonitorUpdate(id, []); });
+      m.on('error',        err => console.warn(`SSH [${cred.name || cred.host}]: ${err}`));
+      return new Promise(resolve => {
+        const done = result => { clearTimeout(timer); resolve(result); };
+        const timer = setTimeout(() => done({ ok: false, error: 'timeout' }), 5000);
+        m.once('connected', () => done({ ok: true }));
+        m.once('error', err  => done({ ok: false, error: err }));
+        m.connect();
+      });
+    },
     onSSHCredsChanged: () => {
       // Clear stale SSH sessions from board, then reconnect with new creds
       for (const key of [..._allSessions.keys()]) {
@@ -271,6 +293,8 @@ app.whenReady().then(() => {
 
   // ── Session aggregation (local + SSH) ───────────────────────
   const _allSessions = new Map(); // monitorId → sessions[]
+  let _prevGlobal = 'sleep';
+  let _boardAutoOpened = false;
 
   function onMonitorUpdate(monitorId, sessions) {
     _allSessions.set(monitorId, sessions);
@@ -285,6 +309,27 @@ app.whenReady().then(() => {
     else if (states.some(s => s === 'act' || s === 'thinking'))      global = 'act';
     else if (states.some(s => s === 'replied' || s === 'success'))   global = 'success';
     notifyPetState(global);
+
+    // Auto-open board when first entering attention or done state
+    const enteringAlert = global === 'require_action' && _prevGlobal !== 'require_action';
+    const enteringDone  = global === 'success'        && _prevGlobal !== 'success' && _prevGlobal !== 'require_action';
+    if (enteringAlert || enteringDone) {
+      if (!boardWindow || boardWindow.isDestroyed()) {
+        createBoardWindow();
+        _boardAutoOpened = true;
+      }
+    }
+
+    // Auto-close board when all sessions return to sleep (if we auto-opened it)
+    if (global === 'sleep' && _prevGlobal !== 'sleep' && _boardAutoOpened) {
+      if (boardWindow && !boardWindow.isDestroyed()) {
+        boardWindow.close();
+        boardWindow = null;
+      }
+      _boardAutoOpened = false;
+    }
+
+    _prevGlobal = global;
   }
 
   // Auto-restore user's clip root if preset was reset to defaults

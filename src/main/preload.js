@@ -17,9 +17,10 @@ contextBridge.exposeInMainWorld('petBridge', {
   getPreset:        ()      => ipcRenderer.invoke('get-preset'),
   getUserConfig:    ()      => ipcRenderer.invoke('get-user-config'),
   openSessionFile:  (fp)    => ipcRenderer.send('open-session-file', fp),
-  openProject:      (fp)    => ipcRenderer.send('open-project', fp),
+  openProject:      (info)  => ipcRenderer.send('open-project', info),
   boardResize:      (h)     => ipcRenderer.send('board:resize', h),
   moveTo:           (x, y)  => ipcRenderer.send('pet:move', { x, y }),
+  notifyDoneComplete: ()   => ipcRenderer.send('pet:done-complete'),
   // Preset management (used by state editor)
   savePreset:       (data)  => ipcRenderer.invoke('save-preset', data),
   exportPreset:     (data)  => ipcRenderer.invoke('export-preset', data),
@@ -39,5 +40,6 @@ contextBridge.exposeInMainWorld('settingsBridge', {
   savePreset:       (data)    => ipcRenderer.invoke('save-preset', data),
   getSSHCreds:      ()        => ipcRenderer.invoke('get-ssh-creds'),
   saveSSHCreds:     (creds)   => ipcRenderer.invoke('save-ssh-creds', creds),
+  reconnectSSH:     (idx)     => ipcRenderer.invoke('reconnect-ssh', idx),
   selectFile:       (opts)    => ipcRenderer.invoke('select-file', opts),
 });

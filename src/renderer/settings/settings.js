@@ -30,7 +30,10 @@ async function load() {
   document.getElementById('localLogDir').value = cfg.monitor?.localLogDir ?? '';
   document.getElementById('pollInterval').value = cfg.monitor?.pollIntervalMs ?? 2000;
   document.getElementById('maxSessions').value  = cfg.board?.maxSessions ?? 3;
-  const savedRoot = cfg.clipsRootFolder ?? '';
+
+  // Preset is the source of truth for clipsRootFolder (State Process Editor may have changed it)
+  const preset = await window.settingsBridge.getPreset();
+  const savedRoot = preset.clipsRootFolder ?? cfg.clipsRootFolder ?? '';
   if (savedRoot) {
     document.getElementById('clipsRoot').value = savedRoot;
     await scanClipsRoot(savedRoot);
@@ -55,9 +58,26 @@ function renderSSHList() {
           </span>
         </div>
       </div>
-      <button class="del" data-i="${i}">×</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="reconnect" data-i="${i}" style="background:none;border:1px solid #6c7086;color:#a6adc8;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:12px">重连</button>
+        <button class="del" data-i="${i}">×</button>
+      </div>
     </div>
   `).join('');
+
+  list.querySelectorAll('.reconnect').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      setStatus('status-ssh', '重连中…', true);
+      const res = await window.settingsBridge.reconnectSSH(Number(btn.dataset.i));
+      if (res?.ok) {
+        setStatus('status-ssh', '重连成功', true);
+      } else if (res?.error === 'timeout') {
+        setStatus('status-ssh', '连接超时', false);
+      } else {
+        setStatus('status-ssh', `重连失败：${res?.error ?? '未知错误'}`, false);
+      }
+    });
+  });
 
   list.querySelectorAll('.del').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -248,9 +268,10 @@ document.getElementById('btn-apply-clips')?.addEventListener('click', async () =
   const newClipDefs = {};
   const stateClips  = {};
   for (const clip of _detectedClips) {
-    if (!clip.state) continue;
     newClipDefs[clip.name] = { folder: clip.path, fps: 2.78, threePhase: true };
-    (stateClips[clip.state] = stateClips[clip.state] ?? []).push(clip.name);
+    if (clip.state) {
+      (stateClips[clip.state] = stateClips[clip.state] ?? []).push(clip.name);
+    }
   }
 
   const prevRootIds = new Set(preset.rootClipIds ?? []);
@@ -283,10 +304,11 @@ document.getElementById('btn-apply-clips')?.addEventListener('click', async () =
   await window.settingsBridge.savePreset(preset);
   cfg.clipsRootFolder = folder;
   await window.settingsBridge.saveConfig(cfg);
-  window.settingsBridge.applyPreset();
-  const msg = rootChanged ? '已重置 Clip 库并应用新根目录' : '已更新 Clip 库';
-  setStatus('status-actions', msg, true);
-  setTimeout(() => setStatus('status-actions', '', true), 3000);
+  window.petBridge.applyPreset();
+  const base = rootChanged ? '已重置 Clip 库' : '已更新 Clip 库';
+  setStatus('status-actions', `✓ ${base}`, true);
+  setTimeout(() => setStatus('status-actions', '', true), 8000);
+  alert(`${base} — 成功！\n\n请打开 State Process Editor，点击右上角「应用执行」使 Clip 更改立即生效。`);
 });
 
 document.getElementById('btn-open-editor')?.addEventListener('click', () => {

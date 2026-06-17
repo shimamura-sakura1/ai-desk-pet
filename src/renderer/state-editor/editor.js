@@ -151,6 +151,7 @@ function renderAll() {
   renderArrows();
   renderLibrary();
   renderProps();
+  renderDebugPanel();
 }
 
 function renderNodes() {
@@ -219,10 +220,25 @@ function renderNodes() {
     node.querySelectorAll('.clip-item').forEach(el => {
       el.addEventListener('click', ev => {
         if (ev.target.classList.contains('clip-remove')) return;
-        selectedKey   = el.dataset.cid;
-        selectedState = el.dataset.sid;
+        if (selectedKey === el.dataset.cid && selectedState === el.dataset.sid) {
+          selectedKey = null; selectedState = null;
+        } else {
+          selectedKey   = el.dataset.cid;
+          selectedState = el.dataset.sid;
+        }
         renderNodes();
         renderProps();
+      });
+
+      el.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        const oldId = el.dataset.cid;
+        const newId = prompt(`重命名 "${oldId}":`, oldId)?.trim();
+        if (!newId || newId === oldId) return;
+        if (preset.clipDefs[newId]) { status('名称已存在', false); return; }
+        renameClip(oldId, newId);
+        renderAll();
+        status(`已重命名: ${oldId} → ${newId}`);
       });
     });
 
@@ -488,6 +504,22 @@ function renderArrows() {
   }
 }
 
+function renameClip(oldId, newId) {
+  preset.clipDefs[newId] = preset.clipDefs[oldId];
+  delete preset.clipDefs[oldId];
+  for (const s of Object.values(preset.states ?? {})) {
+    s.clips = s.clips.map(c => c === oldId ? newId : c);
+  }
+  if (Array.isArray(preset.rootClipIds)) {
+    preset.rootClipIds = preset.rootClipIds.map(id => id === oldId ? newId : id);
+  }
+  if (preset.resolvedClips?.[oldId]) {
+    preset.resolvedClips[newId] = preset.resolvedClips[oldId];
+    delete preset.resolvedClips[oldId];
+  }
+  if (selectedKey === oldId) selectedKey = newId;
+}
+
 function renderLibrary() {
   const list = document.getElementById('lib-list');
   const defs = Object.entries(preset?.clipDefs ?? {});
@@ -497,21 +529,39 @@ function renderLibrary() {
   }
   list.innerHTML = defs.map(([id, def]) => {
     const sel = (selectedKey === id && selectedState === null) ? ' lib-clip-selected' : '';
+    const thumbSrc = preset.resolvedClips?.[id]?.frames?.[0] ?? '';
     return `
       <div class="lib-clip${sel}" data-cid="${esc(id)}" style="cursor:pointer">
-        <div class="lib-clip-id">${esc(id)}</div>
-        <div class="lib-clip-meta">fps ${def.fps} · ${def.threePhase ? '三段式' : '循环'}</div>
+        ${thumbSrc ? `<img class="lib-clip-thumb" src="${esc(thumbSrc)}" alt="">` : '<div class="lib-clip-thumb-placeholder"></div>'}
+        <div class="lib-clip-info">
+          <div class="lib-clip-id">${esc(id)}</div>
+          <div class="lib-clip-meta">fps ${def.fps} · ${def.threePhase ? '三段式' : '循环'}</div>
+        </div>
       </div>`;
   }).join('');
 
   list.querySelectorAll('.lib-clip').forEach(el => {
     el.addEventListener('click', () => {
-      selectedKey   = el.dataset.cid;
-      selectedState = null;
-      // Deselect any node-level selection and refresh library highlight
+      if (selectedKey === el.dataset.cid && selectedState === null) {
+        selectedKey = null; selectedState = null;
+      } else {
+        selectedKey   = el.dataset.cid;
+        selectedState = null;
+      }
       renderNodes();
       renderLibrary();
       renderProps();
+    });
+
+    el.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      const oldId = el.dataset.cid;
+      const newId = prompt(`重命名 "${oldId}":`, oldId)?.trim();
+      if (!newId || newId === oldId) return;
+      if (preset.clipDefs[newId]) { status('名称已存在', false); return; }
+      renameClip(oldId, newId);
+      renderAll();
+      status(`已重命名: ${oldId} → ${newId}`);
     });
   });
 }
@@ -741,9 +791,17 @@ document.getElementById('btn-debug-exit').addEventListener('click', () => {
 
 // ── Init ─────────────────────────────────────────────────────
 
-window.petBridge.getPreset().then(p => {
+function loadPreset(p) {
   preset = p;
   preset.transitions = preset.transitions ?? [];
+  selectedKey = null;
+  selectedState = null;
   renderAll();
   renderDebugPanel();
+}
+
+window.petBridge.getPreset().then(loadPreset);
+
+window.petBridge.onPresetReload(() => {
+  window.petBridge.getPreset().then(loadPreset);
 });

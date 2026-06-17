@@ -58,7 +58,55 @@ function decodeProjectPath(encodedDirName) {
   return dfs([], 0);
 }
 
-function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, createBoardWindow, createDebugPetWindow, createSettingsWindow, createStateEditorWindow, onSSHCredsChanged }) {
+// Decode a Claude-encoded project dir name for a remote SSH path.
+// Cannot use fs.accessSync (path is remote), so falls back to a greedy
+// first-match DFS seeded with the known SSH username.
+function decodeRemotePath(encodedDir, username) {
+  const parts = encodedDir.replace(/^-/, '').split('-');
+
+  function greedyDFS(items, segs, idx) {
+    if (idx === items.length) return segs;
+    const a = greedyDFS(items, [...segs, items[idx]], idx + 1);
+    if (a) return a;
+    if (segs.length > 0) {
+      const merged = [...segs.slice(0, -1), segs[segs.length - 1] + '-' + items[idx]];
+      return greedyDFS(items, merged, idx + 1);
+    }
+    return null;
+  }
+
+  const prefixes = [['Users', username], ['home', username]];
+  if (username === 'root') prefixes.push(['root']);
+
+  for (const prefix of prefixes) {
+    if (parts.slice(0, prefix.length).join('-') !== prefix.join('-')) continue;
+    const rest = parts.slice(prefix.length);
+    if (!rest.length) continue;
+    const restDecoded = greedyDFS(rest, [], 0);
+    if (restDecoded) return '/' + [...prefix, ...restDecoded].join('/');
+  }
+  return null;
+}
+
+function openSSHInTerminal({ sshCmd }) {
+  exec('ps -axco command=', (err, stdout) => {
+    const procs = new Set(stdout.split('\n').map(l => l.trim()));
+
+    if (procs.has('iTerm2') || procs.has('iTerm')) {
+      // Terminal is already running with the SSH session — just bring it to front
+      exec(`osascript -e 'tell app "iTerm" to activate'`);
+    } else if (procs.has('Terminal')) {
+      exec(`osascript -e 'tell app "Terminal" to activate'`);
+    } else {
+      // No terminal running at all — open a new SSH window
+      const tmpScript = path.join(os.tmpdir(), 'ai-desk-pet-ssh.command');
+      fs.writeFileSync(tmpScript, `#!/bin/sh\n${sshCmd}\n`, { mode: 0o755 });
+      exec(`open "${tmpScript}"`);
+    }
+  });
+}
+
+function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEditorWindow, createBoardWindow, createDebugPetWindow, createSettingsWindow, createStateEditorWindow, onSSHCredsChanged, onDoneComplete, onReconnectSSH }) {
   ipcMain.on('open-settings',      () => createSettingsWindow());
   ipcMain.on('open-state-editor',  () => createStateEditorWindow());
 
@@ -133,6 +181,8 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, createBoard
   ipcMain.on('apply-preset', () => {
     const pw = getPetWindow();
     if (pw && !pw.isDestroyed()) pw.webContents.send('preset-reload');
+    const ew = getStateEditorWindow?.();
+    if (ew && !ew.isDestroyed()) ew.webContents.send('preset-reload');
   });
 
   ipcMain.handle('select-folder', async () => {
@@ -190,14 +240,40 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, createBoard
     shell.showItemInFolder(filePath);
   });
 
-  // Jump to the IDE/app that owns the session's project
-  ipcMain.on('open-project', (_e, filePath) => {
-    const parts       = filePath.split(path.sep);
-    const encodedDir  = parts[parts.length - 2] ?? '';
-    const projectPath = decodeProjectPath(encodedDir);
-    if (!projectPath) { shell.showItemInFolder(filePath); return; }
+  // Jump to the IDE/app (local) or SSH terminal (remote) for the session's project
+  ipcMain.on('open-project', (_e, info) => {
+    const filePath  = typeof info === 'string' ? info : info.filePath;
+    const source    = typeof info === 'string' ? 'local' : (info.source ?? 'local');
+    const sessionId = typeof info === 'string' ? null    : info.sessionId;
 
-    // Detect which IDEs are currently running, prefer those
+    if (source === 'ssh' && sessionId) {
+      const colonIdx = sessionId.indexOf(':');
+      const host     = sessionId.slice(0, colonIdx);
+      const remoteFP = sessionId.slice(colonIdx + 1);
+
+      const creds = readSSHCreds();
+      const cred  = creds.find(c => c.host === host);
+      if (!cred) return;
+
+      const parts      = remoteFP.split('/');
+      const encodedDir = parts[parts.length - 2] ?? '';
+      const projectPath = decodeRemotePath(encodedDir, cred.username);
+
+      const portPart = (cred.port && cred.port !== 22) ? ` -p ${cred.port}` : '';
+      const sshCmd = projectPath
+        ? `ssh -t ${cred.username}@${host}${portPart} "cd '${projectPath.replace(/'/g, "'\\''")}' && exec \\$SHELL"`
+        : `ssh ${cred.username}@${host}${portPart}`;
+
+      openSSHInTerminal({ sshCmd });
+      return;
+    }
+
+    // Local session: try IDE first, fall back to Terminal.app
+    const localParts   = filePath.split(path.sep);
+    const encodedDir2  = localParts[localParts.length - 2] ?? '';
+    const projectPath2 = decodeProjectPath(encodedDir2);
+    if (!projectPath2) { shell.showItemInFolder(filePath); return; }
+
     exec('ps -axco command=', (err, stdout) => {
       const procs = new Set(stdout.split('\n').map(l => l.trim()));
       const ALL_APPS = [
@@ -210,8 +286,11 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, createBoard
 
       let tried = 0;
       const attempt = () => {
-        if (tried >= tryApps.length) { shell.openPath(projectPath); return; }
-        exec(`open -a "${tryApps[tried++]}" "${projectPath}"`, e => { if (e) attempt(); });
+        if (tried >= tryApps.length) {
+          exec(`open -a Terminal "${projectPath2.replace(/"/g, '\\"')}"`);
+          return;
+        }
+        exec(`open -a "${tryApps[tried++]}" "${projectPath2}"`, e => { if (e) attempt(); });
       };
       attempt();
     });
@@ -230,6 +309,9 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, createBoard
     const dw = getDebugPetWindow?.();
     if (dw && !dw.isDestroyed()) dw.webContents.send('pet:force-state', state);
   });
+
+  ipcMain.on('pet:done-complete', () => onDoneComplete?.());
+  ipcMain.handle('reconnect-ssh', (_e, idx) => onReconnectSSH?.(idx) ?? { ok: false });
 
   ipcMain.on('pet:move', (_e, { x, y }) => {
     const win = getPetWindow();

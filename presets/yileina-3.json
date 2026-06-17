@@ -2,38 +2,43 @@
   "version": 1,
   "name": "默认预设",
   "clipDefs": {
-    "attention": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/attention",
+    "angry": {
+      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips/angry",
       "fps": 2.78,
       "threePhase": true
     },
-    "bored": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/bored",
+    "attention": {
+      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips/attention",
       "fps": 2.78,
       "threePhase": true
     },
     "done": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/done",
+      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips/done",
       "fps": 2.78,
       "threePhase": true
     },
-    "drag-1": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/drag-1",
+    "drag": {
+      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips/drag",
       "fps": 2.78,
       "threePhase": true
     },
-    "drag-2": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/drag-2",
+    "idle-1": {
+      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips/idle-1",
       "fps": 2.78,
       "threePhase": true
     },
-    "idle": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/idle",
+    "idle-2": {
+      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips/idle-2",
       "fps": 2.78,
       "threePhase": true
     },
-    "working": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/working",
+    "pride": {
+      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips/pride",
+      "fps": 2.78,
+      "threePhase": true
+    },
+    "saya": {
+      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips/saya",
       "fps": 2.78,
       "threePhase": true
     }
@@ -41,13 +46,14 @@
   "states": {
     "idle": {
       "clips": [
-        "idle"
+        "idle-1",
+        "idle-2"
       ],
       "mode": "random"
     },
     "working": {
       "clips": [
-        "working"
+        "pride"
       ],
       "mode": "random"
     },
@@ -65,14 +71,13 @@
     },
     "bored": {
       "clips": [
-        "bored"
+        "saya"
       ],
       "mode": "random"
     },
     "drag": {
       "clips": [
-        "drag-1",
-        "drag-2"
+        "drag"
       ],
       "mode": "random"
     }
@@ -105,13 +110,14 @@
   },
   "transitions": [],
   "rootClipIds": [
+    "angry",
     "attention",
-    "bored",
     "done",
-    "drag-1",
-    "drag-2",
-    "idle",
-    "working"
+    "drag",
+    "idle-1",
+    "idle-2",
+    "pride",
+    "saya"
   ],
-  "clipsRootFolder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips"
+  "clipsRootFolder": "/Users/tachibanakanade/ai-desk-pet/charactor/Yileina-3/clips"
 }

@@ -9,8 +9,10 @@ let _sessionsCallback = null;
 
 beforeAll(() => {
   document.body.innerHTML = `
-    <div id="card-list"></div>
-    <div id="empty-state" class="hidden"></div>
+    <div id="app">
+      <div id="card-list"></div>
+      <div id="empty-state" class="hidden"></div>
+    </div>
   `;
 
   global.petBridge = {

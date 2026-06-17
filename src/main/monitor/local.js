@@ -4,7 +4,8 @@ const { exec } = require('child_process');
 const os = require('os');
 const EventEmitter = require('events');
 
-const CLAUDE_LOG_DIR = path.join(os.homedir(), '.claude', 'projects');
+const CLAUDE_LOG_DIR      = path.join(os.homedir(), '.claude', 'projects');
+const CLAUDE_SESSIONS_DIR = path.join(os.homedir(), '.claude', 'sessions');
 const INACTIVITY_MS = 180000; // 3 min — long enough for Claude to finish thinking
 
 class LocalMonitor extends EventEmitter {
@@ -25,7 +26,21 @@ class LocalMonitor extends EventEmitter {
     this._sessions.forEach(s => {
       clearTimeout(s.inactivityTimer);
       clearTimeout(s._batchPermTimer);
+      clearTimeout(s._pendingPermTimer);
     });
+  }
+
+  clearReplied() {
+    let changed = false;
+    for (const s of this._sessions.values()) {
+      if (s.state === 'replied') {
+        s.state = 'sleep';
+        s.lastMessage = '';
+        clearTimeout(s.inactivityTimer);
+        changed = true;
+      }
+    }
+    if (changed) this._emitUpdate();
   }
 
   getSessions() {
@@ -57,7 +72,40 @@ class LocalMonitor extends EventEmitter {
 
   _poll() {
     this._checkProcesses();
+    this._checkSessionFiles();
     this._checkLogs();
+  }
+
+  _checkSessionFiles() {
+    let changed = false;
+    try {
+      for (const f of fs.readdirSync(CLAUDE_SESSIONS_DIR)) {
+        if (!f.endsWith('.json')) continue;
+        try {
+          const data = JSON.parse(
+            fs.readFileSync(path.join(CLAUDE_SESSIONS_DIR, f), 'utf8')
+          );
+          if (data.status === 'waiting' && data.waitingFor === 'permission prompt') {
+            const session = this._findSessionById(data.sessionId);
+            if (session && session.state !== 'require_action') {
+              session.state       = 'require_action';
+              session.lastMessage = 'Claude needs your permission';
+              session.lastActiveAt = Date.now();
+              clearTimeout(session.inactivityTimer);
+              changed = true;
+            }
+          }
+        } catch {}
+      }
+    } catch {}
+    if (changed) this._emitUpdate();
+  }
+
+  _findSessionById(sessionId) {
+    for (const s of this._sessions.values()) {
+      if (s.id === sessionId) return s;
+    }
+    return null;
   }
 
   _checkProcesses() {
@@ -163,8 +211,20 @@ class LocalMonitor extends EventEmitter {
       const content = entry.message?.content;
       if (Array.isArray(content)) {
         if (content.some(c => c.type === 'tool_use')) {
-          nextState = 'require_action';
-          msg = 'Claude needs your permission';
+          // Debounce 1s: in auto-approve mode the tool_result arrives quickly and
+          // cancels this timer before it fires — no false attention flash.
+          clearTimeout(session._pendingPermTimer);
+          const self = this;
+          session._pendingPermTimer = setTimeout(() => {
+            session._pendingPermTimer = null;
+            if (session.state === 'require_action') return;
+            session.state       = 'require_action';
+            session.lastMessage = 'Claude needs your permission';
+            session.lastActiveAt = Date.now();
+            clearTimeout(session.inactivityTimer);
+            self._emitUpdate();
+          }, 1000);
+          return false;
         } else {
           const text = content.find(c => c.type === 'text');
           // Pure text response = Claude finished, waiting for user reply
@@ -183,7 +243,7 @@ class LocalMonitor extends EventEmitter {
           : '';
         nextState = 'thinking';
         const clean = text.trim();
-        if (clean && !clean.startsWith('<')) {
+        if (clean && !clean.startsWith('<') && !clean.startsWith('This session is being continued')) {
           session.name = clean.slice(0, 40).replace(/\n/g, ' ');
           msg = clean.slice(0, 80).replace(/\n/g, ' ');
         }
@@ -191,6 +251,10 @@ class LocalMonitor extends EventEmitter {
     }
 
     if (!nextState) return false;
+
+    // Cancel any pending require_action debounce — tool ran or state reset
+    clearTimeout(session._pendingPermTimer);
+    session._pendingPermTimer = null;
 
     const stateChanged = nextState !== session.state;
     const msgChanged   = msg !== null && msg !== session.lastMessage;
@@ -201,14 +265,13 @@ class LocalMonitor extends EventEmitter {
     if (msg !== null) session.lastMessage = msg;
     session.lastActiveAt = Date.now();
     clearTimeout(session.inactivityTimer);
-    // require_action / replied need user response — don't auto-sleep them.
-    // Only set inactivity timer for working states (thinking/act).
-    if (nextState !== 'require_action' && nextState !== 'alert' && nextState !== 'replied') {
+    if (nextState !== 'require_action' && nextState !== 'alert') {
+      const ms = nextState === 'replied' ? 30_000 : INACTIVITY_MS;
       session.inactivityTimer = setTimeout(() => {
         session.state = 'sleep';
         session.lastMessage = '';
         this._emitUpdate();
-      }, INACTIVITY_MS);
+      }, ms);
     }
     return true;
   }
@@ -247,7 +310,7 @@ class LocalMonitor extends EventEmitter {
             const text = typeof c === 'string' ? c
               : Array.isArray(c) ? (c.find(x => x.type === 'text')?.text ?? '') : '';
             const clean = text.trim();
-            if (clean && !clean.startsWith('<')) {
+            if (clean && !clean.startsWith('<') && !clean.startsWith('This session is being continued')) {
               if (!lastMessage) lastMessage = clean.slice(0, 80).replace(/\n/g, ' ');
               if (!nameDone) { name = clean.slice(0, 40).replace(/\n/g, ' '); nameDone = true; }
             }
@@ -259,6 +322,7 @@ class LocalMonitor extends EventEmitter {
 
     return { id, name, project, state: 'sleep', lastMessage, filePath,
              inactivityTimer: null, _batchPermTimer: null, _batchPermTimerId: 0,
+             _pendingPermTimer: null,
              createdAt, lastActiveAt, messageCount: 0 };
   }
 

@@ -54,6 +54,11 @@ class SSHMonitor extends EventEmitter {
 
   disconnect() {
     this._stopPolling();
+    for (const s of this._sessions.values()) {
+      clearTimeout(s.inactivityTimer);
+      clearTimeout(s._pendingPermTimer);
+      clearTimeout(s._batchPermTimer);
+    }
     if (this._client) this._client.end();
   }
 
@@ -123,6 +128,7 @@ class SSHMonitor extends EventEmitter {
   _poll() {
     if (!this._connected || !this._initDone) return;
     this._checkProcess();
+    this._checkSessionFiles();
     this._findJsonlFiles(files => {
       for (const f of files) {
         if (!this._sessions.has(f)) {
@@ -152,6 +158,39 @@ class SSHMonitor extends EventEmitter {
     });
   }
 
+  _checkSessionFiles() {
+    // Mirror local.js _checkSessionFiles: poll ~/.claude/sessions/*.json on the remote
+    // to get the authoritative "waiting for permission" signal.
+    this._exec(
+      'find ~/.claude/sessions -name \'*.json\' 2>/dev/null | while IFS= read -r f; do tr -d \'\\n\' < "$f" && echo; done',
+      out => {
+        let changed = false;
+        for (const line of out.split('\n').filter(l => l.trim())) {
+          try {
+            const data = JSON.parse(line);
+            if (data.status !== 'waiting' || data.waitingFor !== 'permission prompt') continue;
+            // Match by JSONL basename: our session filePath ends with "<sessionId>.jsonl"
+            const remoteId = data.sessionId;
+            for (const [filePath, session] of this._sessions) {
+              const basename = filePath.split('/').pop().replace(/\.jsonl$/, '');
+              if (basename !== remoteId) continue;
+              if (session.state === 'require_action') break;
+              session.state       = 'require_action';
+              session.lastMessage = 'Claude needs your permission';
+              session.lastActiveAt = Date.now();
+              clearTimeout(session.inactivityTimer);
+              clearTimeout(session._pendingPermTimer);
+              session._pendingPermTimer = null;
+              changed = true;
+              break;
+            }
+          } catch {}
+        }
+        if (changed) this._emitUpdate();
+      }
+    );
+  }
+
   _checkFileGrowth(filePath) {
     const session = this._sessions.get(filePath);
     if (!session) return;
@@ -167,13 +206,57 @@ class SSHMonitor extends EventEmitter {
   }
 
   _parseChunk(chunk, session) {
-    let changed = false;
+    let changed       = false;
+    let batchPermGap  = 0;
+    let lastToolUseTs = null;
+
     for (const line of chunk.split('\n').filter(l => l.trim())) {
       try {
         session.messageCount = (session.messageCount || 0) + 1;
-        if (this._handleEntry(JSON.parse(line), session)) changed = true;
+        const entry = JSON.parse(line);
+
+        if (entry.type === 'assistant') {
+          const c = entry.message?.content;
+          lastToolUseTs = (Array.isArray(c) && c.some(x => x.type === 'tool_use'))
+            ? (entry.timestamp ?? null) : null;
+        } else if (entry.type === 'user' && entry.toolUseResult !== undefined) {
+          if (lastToolUseTs && entry.timestamp) {
+            const gap = new Date(entry.timestamp).getTime() - new Date(lastToolUseTs).getTime();
+            // SSH polls every 3s, so same-chunk pairs include all approvals within 3s window.
+            // Use 500ms threshold: catches manual approval (>500ms) while skipping auto-approve (<100ms).
+            if (gap >= 500) batchPermGap = gap;
+          }
+          lastToolUseTs = null;
+        }
+
+        if (this._handleEntry(entry, session)) changed = true;
       } catch {}
     }
+
+    if (batchPermGap > 0 && session.state === 'act') {
+      session.state       = 'require_action';
+      session.lastMessage = 'Claude needed your permission';
+      this._emitUpdate();
+
+      clearTimeout(session._batchPermTimer);
+      session._batchPermTimerId = (session._batchPermTimerId ?? 0) + 1;
+      const timerId = session._batchPermTimerId;
+      const self = this;
+      session._batchPermTimer = setTimeout(() => {
+        if (session.state === 'require_action' && session._batchPermTimerId === timerId) {
+          session.state       = 'act';
+          session.lastMessage = 'Running…';
+          session.lastActiveAt = Date.now();
+          clearTimeout(session.inactivityTimer);
+          session.inactivityTimer = setTimeout(() => {
+            session.state = 'sleep'; session.lastMessage = ''; self._emitUpdate();
+          }, INACTIVITY_MS);
+          self._emitUpdate();
+        }
+      }, 1500);
+      return;
+    }
+
     if (changed) this._emitUpdate();
   }
 
@@ -185,8 +268,18 @@ class SSHMonitor extends EventEmitter {
       const content = entry.message?.content;
       if (Array.isArray(content)) {
         if (content.some(c => c.type === 'tool_use')) {
-          nextState = 'require_action';
-          msg       = 'Claude needs your permission';
+          clearTimeout(session._pendingPermTimer);
+          const self = this;
+          session._pendingPermTimer = setTimeout(() => {
+            session._pendingPermTimer = null;
+            if (session.state === 'require_action') return;
+            session.state       = 'require_action';
+            session.lastMessage = 'Claude needs your permission';
+            session.lastActiveAt = Date.now();
+            clearTimeout(session.inactivityTimer);
+            self._emitUpdate();
+          }, 1000);
+          return false;
         } else {
           nextState = 'replied';
           const text = content.find(c => c.type === 'text');
@@ -203,14 +296,18 @@ class SSHMonitor extends EventEmitter {
           : Array.isArray(content) ? (content.find(c => c.type === 'text')?.text ?? '') : '';
         nextState = 'thinking';
         const clean = text.trim();
-        if (clean && !clean.startsWith('<')) {
-          if (session.name === session.project) session.name = clean.slice(0, 40);
+        if (clean && !clean.startsWith('<') && !clean.startsWith('This session is being continued')) {
+          if (session.name === session.project) session.name = clean.slice(0, 40).replace(/\n/g, ' ');
           msg = clean.slice(0, 80).replace(/\n/g, ' ');
         }
       }
     }
 
     if (!nextState) return false;
+
+    clearTimeout(session._pendingPermTimer);
+    session._pendingPermTimer = null;
+
     const stateChanged = nextState !== session.state;
     const msgChanged   = msg !== null && msg !== session.lastMessage;
     if (!stateChanged && !msgChanged) return false;
@@ -218,11 +315,13 @@ class SSHMonitor extends EventEmitter {
     if (msg !== null) session.lastMessage = msg;
     session.lastActiveAt = Date.now();
     clearTimeout(session.inactivityTimer);
-    if (nextState !== 'require_action' && nextState !== 'alert' && nextState !== 'replied') {
+    if (nextState !== 'require_action' && nextState !== 'alert') {
+      const ms = nextState === 'replied' ? 30_000 : INACTIVITY_MS;
       session.inactivityTimer = setTimeout(() => {
         session.state = 'sleep';
+        session.lastMessage = '';
         this._emitUpdate();
-      }, INACTIVITY_MS);
+      }, ms);
     }
     return true;
   }
@@ -242,7 +341,10 @@ class SSHMonitor extends EventEmitter {
       createdAt:       Date.now(),
       lastActiveAt:    null,
       messageCount:    0,
-      inactivityTimer: null,
+      inactivityTimer:    null,
+      _pendingPermTimer:  null,
+      _batchPermTimer:    null,
+      _batchPermTimerId:  0,
     };
   }
 

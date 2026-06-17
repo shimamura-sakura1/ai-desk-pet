@@ -112,12 +112,22 @@ describe('LocalMonitor: Claude Code 批写入检测', () => {
     expect(emittedStates).toHaveLength(1);
   });
 
-  test('tool_use 单独在 chunk（正常流程）→ 立即 emit require_action', () => {
+  test('tool_use 单独在 chunk → 1s 防抖后 emit require_action（auto mode 时会被取消）', () => {
     const session = makeSession({ state: 'act' });
     monitor._sessions.set('/test.jsonl', session);
 
     monitor._parseChunk(toolUseEntry('2026-06-15T00:00:00.000Z'), session);
 
+    // 不立即触发（防抖 1s）
+    expect(emittedStates).toHaveLength(0);
+    expect(session.state).toBe('act');
+
+    // 999ms 内仍未触发
+    jest.advanceTimersByTime(999);
+    expect(emittedStates).toHaveLength(0);
+
+    // 1s 后触发
+    jest.advanceTimersByTime(1);
     expect(emittedStates).toHaveLength(1);
     expect(emittedStates[0]).toContain('require_action');
     expect(session.state).toBe('require_action');
