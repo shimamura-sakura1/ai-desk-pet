@@ -2,7 +2,7 @@
 
 A desktop companion that lives in the corner of your screen and watches your [Claude Code](https://www.anthropic.com/claude-code) sessions in real time. When Claude is thinking, working, or waiting for your approval, the pet reacts with different animations to let you know at a glance.
 
-> **macOS only** — Windows/Linux support is not planned at this time.
+**Supports macOS and Windows.**
 
 ---
 
@@ -25,24 +25,65 @@ A desktop companion that lives in the corner of your screen and watches your [Cl
 
 ## Requirements
 
-- macOS 12 or later (Apple Silicon & Intel both work)
-- Node.js 18 or later
-- [Claude Code](https://www.anthropic.com/claude-code) installed and used on this machine (or a remote via SSH)
+| | macOS | Windows |
+|-|-------|---------|
+| OS | macOS 12 or later | Windows 10 (20H2+) or Windows 11 |
+| Node.js | 18 or later | 18 or later |
+| Claude Code | ✅ | ✅ |
+| SSH jump (跳转) | iTerm2 or Terminal.app | Windows Terminal (`wt.exe`) recommended |
+
+Claude Code stores session files in `~/.claude/projects/` on both platforms. On Windows that resolves to `C:\Users\<you>\.claude\projects\`.
 
 ---
 
-## Quick start
+## Step-by-step: Getting started
+
+### Step 1 — Clone and install
 
 ```bash
 git clone https://github.com/shimamura-sakura1/ai-desk-pet.git
 cd ai-desk-pet
 npm install
+```
+
+### Step 2 — Start the app
+
+```bash
 npm start
 ```
 
-The pet will appear at the bottom-right corner of your primary display.
+The pet appears at the bottom-right corner of your primary display. It is transparent, always-on-top, and has no window frame.
 
-The bundled demo sprites (`assets/clips/`) are placeholder frames — see **Custom characters** below to use your own.
+### Step 3 — Open Claude Code in any terminal
+
+```bash
+claude
+```
+
+Within a few seconds the pet switches from **Idle** to **Working**. When Claude finishes a task and waits for your next message it switches to **Done**. When Claude asks for tool approval it switches to **Attention** (orange) and the session board opens automatically.
+
+### Step 4 — View the session board
+
+Click the pet to toggle the session board. Each card shows:
+
+- A colored dot (state indicator)
+- The session's project name and last message
+- Click a card to expand it → see timestamps and a **跳转到项目** (Jump to project) button
+
+**Jump to project** opens the project in VS Code / Cursor if either is running, or falls back to a terminal at the project directory.
+
+### Step 5 — (Optional) Add SSH remote machines
+
+1. Right-click the pet → **Settings** → **SSH 远程** tab
+2. Fill in host, port, username, and authentication method (password or private key)
+3. Click **测试连接** (Test connection) — wait for the green confirmation
+4. Click **添加** (Add)
+
+Remote sessions appear in the board with an **SSH** badge. If the connection drops, click **重连** (Reconnect) next to that server to retry without restarting the app.
+
+### Step 6 — (Optional) Use your own character sprites
+
+See the **Custom characters** section below.
 
 ---
 
@@ -54,7 +95,7 @@ Right-click the pet → **Settings** to configure:
 |---------|-----------------|
 | **Board** | Max sessions shown in the session panel |
 | **Character** | Point to a folder of sprite clips (see below) |
-| **SSH** | Add remote machines to monitor (host, port, username, key or password) |
+| **SSH** | Add remote machines to monitor |
 
 SSH credentials are stored in `~/.ai-desk-pet/credentials.json` and are **never committed to the repo**.
 
@@ -110,7 +151,7 @@ You can use **any name** for a state — clips with names that don't match a bui
 1. Right-click pet → **Settings** → **Character** tab (动作设置)
 2. Click **浏览** and point to the clips folder (e.g. `my-character/clips/`)
 3. Click **应用到预设** — the app auto-detects sub-folders and maps them to states by name
-4. A prompt will confirm success and remind you to open **State Process Editor** and click **应用执行** to apply the changes to the live pet
+4. A prompt will confirm success. Open **State Process Editor** and click **应用执行** to apply the changes to the live pet.
 
 Or open **State Process Editor** (Settings → 自定义组件 → Open State Process Editor) to manually wire clips to states and preview each animation in isolation.
 
@@ -169,6 +210,25 @@ Open via Settings → 自定义组件 → **State Process Editor**.
 
 Remote sessions appear in the session board with an **SSH** badge showing the server name.
 
+> **Session path on remote**: the same `~/.claude/projects/` and `~/.claude/sessions/` directories. The SSH monitor reads these over the existing SSH connection — no agent or daemon is required on the remote machine.
+
+---
+
+## Building a distributable
+
+```bash
+# macOS (.dmg)
+npm run build
+
+# Windows (NSIS installer + portable .exe)
+npm run build:win
+
+# Both at once
+npm run build:all
+```
+
+Built files land in `dist/`. The Windows build requires running on Windows or using an appropriate cross-compile environment (electron-builder cross-compile).
+
 ---
 
 ## Project structure
@@ -188,9 +248,12 @@ ai-desk-pet/
 │       ├── board/            # Session status panel
 │       ├── settings/         # Settings UI
 │       └── state-editor/     # Clip / state graph editor
-├── assets/clips/             # Bundled demo sprite frames
+├── assets/
+│   ├── clips/                # Bundled demo sprite frames
+│   ├── icon.icns             # macOS app icon
+│   └── icon.ico              # Windows app icon
 ├── config/
-│   └── presets/default.json  # Default clip-to-state mapping (relative paths)
+│   └── presets/default.json  # Default clip-to-state mapping
 ├── split2png.py              # Step 1: cut a sprite sheet into per-frame PNGs
 ├── png2state.py              # Step 2: assign rows to animation states
 └── tests/
@@ -206,8 +269,14 @@ Settings → Character → re-select your clip root folder, or check that PNG fi
 **SSH sessions don't appear**  
 Make sure Claude Code is actually running on the remote machine and that the remote user's `~/.claude/projects/` directory is readable by the SSH user. Use the **重连** button to retry a dropped connection.
 
+**Jump to project opens a new terminal window instead of focusing the existing one**  
+This is a known limitation — reliably identifying which terminal tab hosts a specific SSH session requires per-terminal APIs that vary by version and shell configuration. The app brings the terminal app to the foreground if it is already running; if no terminal is running it opens a new window with an SSH connection to the project directory.
+
 **Does this work with Claude.ai web or the API?**  
 No — it monitors the local file-based session logs written by the Claude Code CLI. It does not hook into the web interface or any API.
+
+**Windows: the pet window is not transparent**  
+Transparent frameless windows require hardware-accelerated compositing. On some older GPUs or when running under Remote Desktop / certain VM configurations, transparency may not render correctly. This is an Electron limitation on Windows.
 
 ---
 
