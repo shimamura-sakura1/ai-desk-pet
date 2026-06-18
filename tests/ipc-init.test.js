@@ -5,6 +5,7 @@ jest.mock('electron', () => ({
   ipcMain: { handle: jest.fn(), on: jest.fn() },
   shell:   { openPath: jest.fn(), showItemInFolder: jest.fn() },
   dialog:  { showOpenDialog: jest.fn(), showSaveDialog: jest.fn() },
+  app:     { isPackaged: false, getPath: jest.fn(() => '/tmp') },
 }));
 
 // ── helpers ─────────────────────────────────────────────────────

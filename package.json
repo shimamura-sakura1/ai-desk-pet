@@ -60,7 +60,7 @@
           ]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.png"
     },
     "nsis": {
       "oneClick": false,
@@ -85,10 +85,6 @@
       {
         "from": "assets/pets",
         "to": "pets"
-      },
-      {
-        "from": "config/user.json",
-        "to": "user.json"
       }
     ]
   }

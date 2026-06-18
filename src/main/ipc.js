@@ -1,4 +1,4 @@
-const { ipcMain, shell, dialog } = require('electron');
+const { ipcMain, shell, dialog, app } = require('electron');
 const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
@@ -24,9 +24,13 @@ function getRunningProcesses(cb) {
   }
 }
 
-const USER_CONFIG_PATH = path.join(__dirname, '../../config/user.json');
-const PRESET_DIR       = path.join(__dirname, '../../config/presets');
-const APP_ROOT         = path.join(__dirname, '../..');
+// In a packaged app the asar is read-only; write user config to the OS user-data dir.
+// In development (npm start) use the in-repo config/ folder as before.
+const APP_ROOT   = path.join(__dirname, '../..');
+const PRESET_DIR = path.join(__dirname, '../../config/presets');
+const USER_CONFIG_PATH = app.isPackaged
+  ? path.join(app.getPath('userData'), 'user.json')
+  : path.join(__dirname, '../../config/user.json');
 
 const DEFAULT_USER_CONFIG = {
   activePreset: 'default',
@@ -38,6 +42,7 @@ const DEFAULT_USER_CONFIG = {
 };
 
 if (!fs.existsSync(USER_CONFIG_PATH)) {
+  fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true });
   fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(DEFAULT_USER_CONFIG, null, 2));
 }
 
