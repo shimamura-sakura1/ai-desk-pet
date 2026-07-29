@@ -144,6 +144,22 @@
     }
     .auth-btn.active { background: #45475a; color: #cdd6f4; font-weight: 600; }
     .auth-btn:not(.active):hover { background: #313244; color: #a6adc8; }
+
+    /* ── Optical-flow toggle switch ── */
+    .row-toggle { display: flex; align-items: center; justify-content: space-between; }
+    .row-toggle label:first-child { margin-bottom: 0; }
+    .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: #45475a; border-radius: 24px; transition: background .2s;
+    }
+    .slider::before {
+      content: ''; position: absolute; height: 18px; width: 18px;
+      left: 3px; top: 3px; background: #cdd6f4; border-radius: 50%; transition: transform .2s;
+    }
+    .switch input:checked + .slider { background: #cba6f7; }
+    .switch input:checked + .slider::before { transform: translateX(18px); }
   </style>
 </head>
 <body>
@@ -152,6 +168,7 @@
     <div class="tab" data-panel="ssh">SSH 远程</div>
 
     <div class="tab" data-panel="actions">动作设置</div>
+    <div class="tab" data-panel="anim">动画</div>
     <div class="tab" data-panel="components">自定义组件<span class="wip-badge">WIP</span></div>
   </div>
 
@@ -229,6 +246,40 @@
     <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-primary" id="btn-apply-clips">应用到预设</button>
       <div class="status" id="status-actions"></div>
+    </div>
+  </div>
+
+  <!-- 动画设置 -->
+  <div id="panel-anim" class="panel">
+    <h3>动作平滑（光流法补帧）</h3>
+    <p class="hint">
+      在每两个关键帧之间用光流法（optical flow）计算并生成中间帧，消除低帧率动画的卡顿感。<br>
+      计算在本地完成，开启后首次加载桌宠会稍慢；效果可随时关闭恢复原始帧。
+    </p>
+    <div class="field row-toggle">
+      <label>启用光流补帧</label>
+      <label class="switch">
+        <input type="checkbox" id="of-enabled">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="field"><label>补帧倍数（每两帧之间插入的中间帧数 = 倍数 − 1）</label>
+      <select id="of-factor">
+        <option value="1">1×（不插入，等效关闭）</option>
+        <option value="2">2×（插入 1 帧）</option>
+        <option value="3">3×（插入 2 帧）</option>
+        <option value="4">4×（插入 3 帧）</option>
+      </select>
+    </div>
+    <div class="field"><label>计算质量</label>
+      <select id="of-quality">
+        <option value="fast">快速（低分辨率光流，更快）</option>
+        <option value="balanced">均衡（更平滑）</option>
+      </select>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary" id="btn-apply-of">应用并重载桌宠</button>
+      <div class="status" id="status-of"></div>
     </div>
   </div>
 

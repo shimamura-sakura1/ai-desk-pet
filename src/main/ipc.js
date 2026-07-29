@@ -35,7 +35,7 @@ const USER_CONFIG_PATH = app.isPackaged
 const DEFAULT_USER_CONFIG = {
   activePreset: 'default',
   clipsRootFolder: path.join(APP_ROOT, 'assets/clips'),
-  pet:     { activePet: 'default', size: 120 },
+  pet:     { activePet: 'default', size: 120, opticFlow: { enabled: false, factor: 2, quality: 'balanced' } },
   monitor: { localLogDir: '', pollIntervalMs: 2000 },
   board:   { maxSessions: 3 },
   ssh:     [],
@@ -136,6 +136,37 @@ function openSSHInTerminal({ sshCmd }) {
   });
 }
 
+// Open a terminal window at `dir` and run `bin [resumeArg]`.
+function openTerminalAt(dir, bin, resumeArg) {
+  const tail = resumeArg ? ` ${resumeArg}` : '';
+  if (process.platform === 'win32') {
+    const q = `"${bin}${tail}"`;
+    const d = (dir || process.cwd()).replace(/"/g, '\\"');
+    exec(`wt --startingDirectory "${d}" cmd /k ${q}`, err => {
+      if (err) exec(`cmd.exe /c start "" cmd /k "cd /d "${d}" && ${bin}${tail}"`);
+    });
+    return;
+  }
+  // macOS: write a .command and open it (Terminal.app)
+  const tmpScript = path.join(os.tmpdir(), `ai-desk-pet-${bin}.command`);
+  const body = dir ? `cd "${dir}"\n${bin}${tail}\n` : `${bin}${tail}\n`;
+  fs.writeFileSync(tmpScript, body, { mode: 0o755 });
+  exec(`open "${tmpScript}"`);
+}
+
+// Best-effort: bring a Desktop app (Claude Desk / Codex Desk) to the foreground.
+function focusDesktopApp(agent) {
+  const appName = agent === 'codex-desk' ? 'Codex' : 'Claude';
+  if (process.platform === 'win32') {
+    const title = agent === 'codex-desk' ? 'Codex' : 'Claude';
+    exec(`powershell -NoProfile -Command "$ws = New-Object -ComObject wscript.shell; $ws.AppActivate('${title}')"`);
+  } else if (process.platform === 'darwin') {
+    exec(`osascript -e 'tell app "${appName}" to activate'`);
+  } else {
+    exec(`gtk-launch ${appName} 2>/dev/null || xdg-open "" 2>/dev/null`);
+  }
+}
+
 function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEditorWindow, createBoardWindow, createDebugPetWindow, createSettingsWindow, createStateEditorWindow, onSSHCredsChanged, onDoneComplete, onReconnectSSH }) {
   ipcMain.on('open-settings',      () => createSettingsWindow());
   ipcMain.on('open-state-editor',  () => createStateEditorWindow());
@@ -230,7 +261,8 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEdi
 
   ipcMain.handle('scan-clips-folder', (_e, folderPath) => {
     try {
-      return fs.readdirSync(folderPath, { withFileTypes: true })
+      const resolved = path.isAbsolute(folderPath) ? folderPath : path.resolve(APP_ROOT, folderPath);
+      return fs.readdirSync(resolved, { withFileTypes: true })
         .filter(e => e.isDirectory())
         .map(e => e.name)
         .sort();
@@ -361,6 +393,43 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEdi
   ipcMain.on('pet:move', (_e, { x, y }) => {
     const win = getPetWindow();
     if (win) win.setPosition(Math.round(x), Math.round(y));
+    // Keep the session board attached near the pet while dragging.
+    const bw = getBoardWindow();
+    if (bw && !bw.isDestroyed()) {
+      const [bx, by] = bw.getPosition();
+      const petPos = win ? win.getPosition() : [x, y];
+      if (Math.abs(bx - petPos[0]) > 600 || Math.abs(by - petPos[1]) > 600) {
+        const { width: boardW } = bw.getBounds();
+        const { width: sw } = require('electron').screen.getPrimaryDisplay().workAreaSize;
+        let nbx = petPos[0] - (boardW - 219) / 2;
+        let nby = petPos[1] - bw.getBounds().height - 10;
+        if (nby < 0) nby = petPos[1] + 155 + 10;
+        nbx = Math.max(0, Math.min(nbx, sw - boardW - 10));
+        bw.setPosition(Math.round(nbx), Math.round(nby));
+      }
+    }
+  });
+
+  // Jump to the chat interface for a session card.
+  ipcMain.on('open-chat', (_e, info) => {
+    const agent = info?.agent || 'claude-cli';
+    const filePath = info?.filePath;
+    let projectDir = null;
+    if (filePath) {
+      try {
+        const localParts = filePath.split(path.sep);
+        const encodedDir2 = localParts[localParts.length - 2] ?? '';
+        projectDir = decodeProjectPath(encodedDir2);
+      } catch {}
+    }
+    if (agent.endsWith('-desk')) {
+      focusDesktopApp(agent);
+      return;
+    }
+    const resumeArg = (agent === 'claude-cli' && info?.sessionId)
+      ? `--resume ${JSON.stringify(info.sessionId)}`
+      : '';
+    openTerminalAt(projectDir, agent === 'codex-cli' ? 'codex' : 'claude', resumeArg);
   });
 
   function notifyWindow(win, channel, data) {
@@ -395,7 +464,11 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEdi
     }
   }
 
-  return { notifyPetState, notifyTokenUpdate, notifySessions };
+  function notifyAgents(agents) {
+    notifyWindow(getBoardWindow(), 'pet:agents', agents);
+  }
+
+  return { notifyPetState, notifyTokenUpdate, notifySessions, notifyAgents };
 }
 
 module.exports = { setupIPC };

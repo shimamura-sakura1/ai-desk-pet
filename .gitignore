@@ -13,6 +13,13 @@ config/user.json
 # Dependencies
 node_modules/
 
+# Build outputs
+dist/
+out/
+
+# Logs
+*.log
+
 # macOS
 .DS_Store
 
@@ -21,3 +28,9 @@ node_modules/
 # muziki.jpg
 # muziki_nobg.png
 # board.jpg
+
+# Local build log
+/build-log.txt
+
+# WorkBuddy local memory / skills (not part of the project)
+.workbuddy/

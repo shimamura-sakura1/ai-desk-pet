@@ -22,9 +22,43 @@ function targetState({ isDragging, sessionState, isFinishedLocked, isAttentionLo
   return 'idle';
 }
 
+// Fallback chain used when a state has no clips assigned.
+const CLIP_FALLBACK = {
+  attention: 'working',
+  done:      'idle',
+  drag:      'idle',
+  bored:     'idle',
+  working:   'idle',
+};
+
+// Pick a clip id for a given state, with graceful fallback so the pet never freezes.
+function pickClip({
+  stateName,
+  states = {},
+  debugState = null,
+  debugClipId = null,
+  debugSeqIdx = 0,
+  random = Math.random,
+} = {}) {
+  if (debugState === '__clip__') return debugClipId;
+  const list = states[stateName]?.clips ?? [];
+  if (!list.length) {
+    const fb = CLIP_FALLBACK[stateName];
+    if (fb && fb !== stateName) {
+      return pickClip({ stateName: fb, states, debugState, debugClipId, debugSeqIdx, random });
+    }
+    return null;
+  }
+  if (debugState === stateName) {
+    return list[debugSeqIdx % list.length];
+  }
+  return list[Math.floor(random() * list.length)];
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { mapBridgeState, targetState };
+  module.exports = { mapBridgeState, targetState, pickClip };
 } else {
   window.mapBridgeState = mapBridgeState;
   window.targetState    = targetState;
+  window.pickClip       = pickClip;
 }

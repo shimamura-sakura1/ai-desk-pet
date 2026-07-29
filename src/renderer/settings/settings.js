@@ -39,6 +39,12 @@ async function load() {
     await scanClipsRoot(savedRoot);
   }
 
+  // Optical-flow frame interpolation
+  const of = cfg.pet?.opticFlow ?? { enabled: false, factor: 2, quality: 'balanced' };
+  document.getElementById('of-enabled').checked = !!of.enabled;
+  document.getElementById('of-factor').value = String(of.factor ?? 2);
+  document.getElementById('of-quality').value = of.quality ?? 'balanced';
+
   renderSSHList();
 }
 
@@ -313,6 +319,20 @@ document.getElementById('btn-apply-clips')?.addEventListener('click', async () =
 
 document.getElementById('btn-open-editor')?.addEventListener('click', () => {
   window.petBridge.openStateEditor();
+});
+
+// ── 光流补帧设置 ──────────────────────────────────────────────
+document.getElementById('btn-apply-of')?.addEventListener('click', async () => {
+  cfg.pet = cfg.pet ?? {};
+  cfg.pet.opticFlow = {
+    enabled: document.getElementById('of-enabled').checked,
+    factor:  Number(document.getElementById('of-factor').value) || 2,
+    quality: document.getElementById('of-quality').value || 'balanced',
+  };
+  await window.settingsBridge.saveConfig(cfg);
+  window.petBridge.applyPreset(); // reload pet window with new interpolation config
+  setStatus('status-of', '已应用，桌宠正在重载…', true);
+  setTimeout(() => setStatus('status-of', '', true), 6000);
 });
 
 load();

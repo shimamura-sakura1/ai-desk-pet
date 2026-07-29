@@ -35,15 +35,37 @@ function _crossfade(src, onDone) {
 let _preset = null;
 // _clips[id] = { imgs: [Image...], fps: number, threePhase: boolean }
 const _clips = {};
+// Optical-flow frame interpolation config (from user.json → cfg.pet.opticFlow)
+let _opticFlowCfg = { enabled: false, factor: 2, quality: 'balanced' };
 
-function _loadClips(resolvedClips) {
+function _decodeImg(img) {
+  if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+  if (img.decode) return img.decode().catch(() => {});
+  return new Promise(res => { img.onload = () => res(); img.onerror = () => res(); });
+}
+
+async function _loadClips(resolvedClips, opticFlowCfg) {
   for (const [id, def] of Object.entries(resolvedClips)) {
     const imgs = def.frames.map(src => {
       const img = new Image();
       img.src = src;
       return img;
     });
-    _clips[id] = { imgs, fps: def.fps, threePhase: def.threePhase };
+    let threePhase = def.threePhase;
+    const useOF = opticFlowCfg?.enabled && (opticFlowCfg.factor || 1) > 1 && imgs.length > 1 && window.opticalFlow;
+    if (useOF) {
+      try {
+        const expanded = await window.opticalFlow.buildInterpolatedImages(imgs, opticFlowCfg);
+        if (expanded && expanded.length > imgs.length) {
+          imgs.length = 0;
+          imgs.push(...expanded);
+          threePhase = false; // interpolated frames form a continuous loop; drop intro/outro split
+        }
+      } catch (e) {
+        console.warn('[optic-flow] interpolation failed, using original frames:', e);
+      }
+    }
+    _clips[id] = { imgs, fps: def.fps, threePhase };
   }
 }
 
@@ -127,13 +149,13 @@ function _debugAdvance() {
 }
 
 function _pickClip(stateName) {
-  if (_debugState === '__clip__') return _debugClipId;
-  const list = _preset?.states?.[stateName]?.clips ?? [];
-  if (!list.length) return null;
-  if (_debugState === stateName) {
-    return list[_debugSeqIdx % list.length];
-  }
-  return list[Math.floor(Math.random() * list.length)];
+  return pickClip({
+    stateName,
+    states: _preset?.states,
+    debugState: _debugState,
+    debugClipId: _debugClipId,
+    debugSeqIdx: _debugSeqIdx,
+  });
 }
 
 function _startClip(clipId, initPhase) {
@@ -254,26 +276,24 @@ function onDragEnd()   { _isDragging = false; }
 
 function onSessionChange(status) {
   _sessionState = status;
+  // Always clear transient timers first; individual branches re-arm as needed.
+  clearTimeout(_boredTimer);
+  clearTimeout(_doneTimer);
   if (status === 'answering') {
     _isFinishedLocked  = false;
     _isAttentionLocked = false;
     _isBored = false;
-    clearTimeout(_boredTimer);
-    clearTimeout(_doneTimer);
   } else if (status === 'attention') {
     _isAttentionLocked = true;
     _isFinishedLocked  = false;
     _isBored = false;
-    clearTimeout(_boredTimer);
   } else if (status === 'finished') {
     _isAttentionLocked = false;
     _isFinishedLocked  = true;
     _isBored = false;
-    clearTimeout(_boredTimer);
   } else if (status === 'idle') {
     _isAttentionLocked = false;
     _isFinishedLocked  = false;
-    clearTimeout(_doneTimer);
   }
 }
 
@@ -393,24 +413,33 @@ window.petBridge.onForceClip(clipId => {
 });
 
 window.petBridge.onPresetReload(() => {
-  // Reset playback state so engine picks up new clips
+  // Reset playback state so engine picks up new clips + optic-flow config
   _preset    = null;
   _curClipId = null;
   _curState  = null;
   _pending   = null;
   for (const k of Object.keys(_clips)) delete _clips[k];
-  window.petBridge.getPreset().then(p => {
-    _preset = p;
-    _loadClips(p.resolvedClips);
-    _enterState(_targetState());
-  });
+  _initEngine();
 });
 
 // ============================================================
 // INIT
 // ============================================================
-window.petBridge.getPreset().then(preset => {
+let _loopStarted = false;
+
+async function _initEngine() {
+  const preset = await window.petBridge.getPreset();
   _preset = preset;
-  _loadClips(preset.resolvedClips);
-  requestAnimationFrame(_tick);
-});
+  try {
+    const cfg = await window.petBridge.getUserConfig();
+    _opticFlowCfg = cfg?.pet?.opticFlow ?? _opticFlowCfg;
+  } catch {}
+  await _loadClips(preset.resolvedClips, _opticFlowCfg);
+  _enterState(_targetState());
+  if (!_loopStarted) {
+    _loopStarted = true;
+    requestAnimationFrame(_tick);
+  }
+}
+
+window.petBridge.getPreset().then(() => _initEngine());

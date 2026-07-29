@@ -85,10 +85,19 @@ function createBoardWindow() {
   boardWindow.loadFile(path.join(__dirname, '../renderer/board/index.html'));
   boardWindow.on('closed', () => { boardWindow = null; });
 
-  // 加载完成后推送当前 session 状态（避免打开时面板为空）
+  // Close the board when the user clicks somewhere else (focus lost).
+  // Attached after load so the initial focus-grab doesn't instantly close it.
   boardWindow.webContents.once('did-finish-load', () => {
     if (lastSessions.length && boardWindow && !boardWindow.isDestroyed()) {
       boardWindow.webContents.send('pet:sessions-update', lastSessions);
+    }
+    if (boardWindow && !boardWindow.isDestroyed()) {
+      boardWindow.on('blur', () => {
+        if (boardWindow && !boardWindow.isDestroyed()) {
+          boardWindow.close();
+          boardWindow = null;
+        }
+      });
     }
   });
 }
@@ -350,6 +359,7 @@ app.whenReady().then(() => {
   // Local monitor
   const monitor = new LocalMonitor();
   monitor.on('sessions', ss => onMonitorUpdate('local', ss));
+  monitor.on('agents',  ags => notifyAgents(ags));
   monitor.start(2000);
 
   // SSH monitors — started here and dynamically via onSSHCredsChanged

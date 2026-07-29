@@ -3,6 +3,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const os = require('os');
 const EventEmitter = require('events');
+const { normName, classify } = require('./agents');
 
 const CLAUDE_LOG_DIR      = path.join(os.homedir(), '.claude', 'projects');
 const CLAUDE_SESSIONS_DIR = path.join(os.homedir(), '.claude', 'sessions');
@@ -13,6 +14,11 @@ class LocalMonitor extends EventEmitter {
     super();
     this._pollTimer = null;
     this._sessions = new Map(); // sessionId → { state, name, lastMessage, filePath, fileSize }
+    this._agents = new Set();   // detected running AI agents (claude-cli, codex-cli, ...)
+  }
+
+  getAgents() {
+    return [...this._agents];
   }
 
   start(intervalMs = 2000) {
@@ -109,24 +115,43 @@ class LocalMonitor extends EventEmitter {
   }
 
   _checkProcesses() {
-    const check = (running) => {
-      if (!running) {
-        let changed = false;
-        for (const s of this._sessions.values()) {
-          if (s.state !== 'sleep') { s.state = 'sleep'; changed = true; }
-        }
-        if (changed) this._emitUpdate();
+    const finish = (names, pathsByBase) => {
+      this._agents = classify(names, process.platform, pathsByBase);
+      const running = this._agents.has('claude-cli');
+      let changed = false;
+      for (const s of this._sessions.values()) {
+        if (s.state !== 'sleep') { s.state = 'sleep'; changed = true; }
       }
+      if (changed) this._emitUpdate();
+      this.emit('agents', [...this._agents]);
     };
+
     if (process.platform === 'win32') {
       exec('tasklist /FO CSV /NH', (err, stdout) => {
-        if (err) return;
-        check(stdout.split('\n').some(l => l.toLowerCase().startsWith('"claude.exe"')));
+        if (err) { finish([], {}); return; }
+        const names = stdout.split('\n').map(l => normName(l.split(',')[0]));
+        // Refine CLI vs Desktop using executable paths (best effort)
+        const psCmd = 'powershell -NoProfile -Command "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -in @(\'claude.exe\',\'codex.exe\') } | ForEach-Object { $_.Name + \'|\' + $_.ExecutablePath }"';
+        exec(psCmd, (e2, out2) => {
+          const pathsByBase = {};
+          if (!e2 && out2) {
+            for (const line of out2.split('\n')) {
+              const idx = line.indexOf('|');
+              if (idx > 0) {
+                const base = normName(line.slice(0, idx));
+                const p = line.slice(idx + 1).trim();
+                if (p) pathsByBase[base] = p;
+              }
+            }
+          }
+          finish(names, pathsByBase);
+        });
       });
     } else {
       exec('ps -axo comm=', (err, stdout) => {
-        if (err) return;
-        check(stdout.split('\n').some(l => l.trim() === 'claude'));
+        if (err) { finish([], {}); return; }
+        const names = stdout.split('\n').map(l => normName(l.trim())).filter(Boolean);
+        finish(names, {});
       });
     }
   }
@@ -362,7 +387,7 @@ class LocalMonitor extends EventEmitter {
     //   4. Otherwise → sleep
     const states = sessions.map(s => s.state);
     let globalState = 'sleep';
-    // Priority: attention > working > done > sleep
+    // Priority: attention > working > done > (agent presence) > sleep
     // replied = Claude asked/responded, waiting for user → same priority as require_action
     if (states.some(s => s === 'require_action' || s === 'alert')) {
       globalState = 'require_action';
@@ -370,8 +395,12 @@ class LocalMonitor extends EventEmitter {
       globalState = 'act';
     } else if (states.some(s => s === 'replied' || s === 'success')) {
       globalState = 'success';
+    } else if (this._agents && this._agents.size > 0) {
+      // Any AI agent (Claude/Codex, CLI or Desktop) running → show "working"
+      globalState = 'act';
     }
     this.emit('state', globalState);
+    this.emit('agents', [...this._agents]);
   }
 }
 

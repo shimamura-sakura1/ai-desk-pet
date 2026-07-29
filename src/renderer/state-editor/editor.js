@@ -649,7 +649,8 @@ document.getElementById('btn-add-clip').addEventListener('click', async () => {
   const folder = await window.petBridge.selectFolder();
   if (!folder) return;
 
-  let clipId = folder.split('/').pop().toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'clip';
+  let clipId = (folder.replace(/\\/g, '/').split('/').pop() || 'clip')
+    .toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'clip';
   const base = clipId;
   let n = 1;
   while (preset.clipDefs[clipId]) clipId = `${base}-${++n}`;

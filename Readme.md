@@ -1,44 +1,62 @@
-# AI Desk Pet
+# AI Desk Pet（AI 桌宠）
 
-A desktop companion that lives in the corner of your screen and watches your [Claude Code](https://www.anthropic.com/claude-code) sessions in real time. When Claude is thinking, working, or waiting for your approval, the pet reacts with different animations to let you know at a glance.
+一个住在屏幕角落的桌面宠物，实时监听你本机 / 远程的 **AI 编程助手会话**（Claude Code、Codex CLI、Claude Desk、Codex Desk）。当助手在思考、干活、或等待你授权时，桌宠会用不同的动画告诉你，一眼就能掌握状态。
 
-**Supports macOS and Windows.**
-
----
-
-## What it does
-
-| Pet state | Triggered when |
-|-----------|----------------|
-| **Idle / Bored** | No Claude Code session is running |
-| **Working** | Claude is actively executing a task |
-| **Attention** | Claude needs your approval (`Allow` / `Reject`) |
-| **Done** | A session just finished |
-| **Drag** | You are dragging the pet around the screen |
-
-- Click the pet → toggles the **session board** (shows all active Claude Code sessions with status, elapsed time, and latest message)
-- Right-click → opens **Settings**
-- Drag (hold ~0.6 s then move) → reposition the pet anywhere on screen
-- SSH monitoring — connect to a remote machine and watch its Claude Code sessions too
+**支持 macOS 与 Windows（已完整适配）。**
 
 ---
 
-## Requirements
+## 它能做什么
+
+| 宠物状态 | 触发时机 |
+|----------|----------|
+| **Idle / Bored** | 没有检测到任何 AI 助手会话在运行 |
+| **Working** | 某个助手正在执行任务（含正在运行的 Codex / Claude 桌面版） |
+| **Attention** | 助手在等待你授权（`Allow` / `Reject`） |
+| **Done** | 刚刚结束一个会话 |
+| **Drag** | 你正在拖动宠物 |
+
+- 点击宠物 → 打开 / 关闭**会话面板**（列出所有活跃会话：状态、耗时、最新消息）
+- 右键宠物 → 打开**设置**
+- 拖动（按住约 0.6 秒再移动）→ 把宠物放到屏幕任意位置
+- SSH 远程监控 —— 连接远程机器，一起看它的助手会话
+- **动作平滑（光流法补帧）** —— 可选开关，消除低帧率动画的卡顿（见下文）
+- **跳转到聊天** —— 点一下直接回到那个会话的终端 / 窗口
+
+---
+
+## 支持的 AI 助手
+
+| 助手 | 进程 | 检测方式 | 跳转行为 |
+|------|------|----------|----------|
+| Claude Code CLI | `claude` / `claude.exe` | 进程名 | `claude --resume <sessionId>` 精确回到该会话 |
+| Codex CLI | `codex` / `codex.exe` | 进程名 | 在终端运行 `codex` 并定位到项目目录 |
+| Claude Desk | `Claude` / `Claude.exe` | 进程名（首字母大写）+ 路径 | 聚焦其桌面窗口 |
+| Codex Desk | `Codex` / `Codex.exe` | 进程名（首字母大写）+ 路径 | 聚焦其桌面窗口 |
+
+> 说明：在 Windows 上 `claude.exe` 与 `Claude.exe` 同名，程序通过**进程名大小写 + 可执行文件路径**来区分 CLI 与桌面版（best-effort）。若你的环境命名特殊，可在 `src/main/monitor/agents.js` 的 `classify()` 调整。
+
+会话状态仍来自 Claude Code 写入本地的会话日志（`~/.claude/projects/` 与 `~/.claude/sessions/`）。Codex 等其它助手目前以「是否在运行」驱动 Working 状态；当没有 Claude Code 会话但监测到 Codex/Claude 在跑时，宠物会保持 Working 提示。
+
+---
+
+## 环境要求
 
 | | macOS | Windows |
 |-|-------|---------|
-| OS | macOS 12 or later | Windows 10 (20H2+) or Windows 11 |
-| Node.js | 18 or later | 18 or later |
+| 系统 | macOS 12+ | Windows 10 (20H2+) / Windows 11 |
+| Node.js | 18+ | 18+ |
 | Claude Code | ✅ | ✅ |
-| SSH jump (跳转) | iTerm2 or Terminal.app | Windows Terminal (`wt.exe`) recommended |
+| Codex CLI | ✅ | ✅ |
+| SSH 跳转 | iTerm2 / Terminal.app | Windows Terminal（`wt.exe`）推荐 |
 
-Claude Code stores session files in `~/.claude/projects/` on both platforms. On Windows that resolves to `C:\Users\<you>\.claude\projects\`.
+Claude Code 的会话文件在两个平台都位于 `~/.claude/projects/`，Windows 上即 `C:\Users\<你>\.claude\projects\`。
 
 ---
 
-## Step-by-step: Getting started
+## 快速开始
 
-### Step 1 — Clone and install
+### 第 1 步 —— 克隆并安装
 
 ```bash
 git clone https://github.com/shimamura-sakura1/ai-desk-pet.git
@@ -46,88 +64,113 @@ cd ai-desk-pet
 npm install
 ```
 
-### Step 2 — Start the app
+### 第 2 步 —— 启动应用
 
 ```bash
-npm start
+npm start          # 普通模式
+# 或 npm run dev   # 开发模式（带额外日志）
 ```
 
-The pet appears at the bottom-right corner of your primary display. It is transparent, always-on-top, and has no window frame.
+宠物会出现在主屏幕的右下角：透明、置顶、无窗口边框。
 
-### Step 3 — Open Claude Code in any terminal
+### 第 3 步 —— 打开任意终端里的 AI 助手
 
 ```bash
 claude
+# 或 codex
 ```
 
-Within a few seconds the pet switches from **Idle** to **Working**. When Claude finishes a task and waits for your next message it switches to **Done**. When Claude asks for tool approval it switches to **Attention** (orange) and the session board opens automatically.
+几秒内宠物会从 **Idle** 切到 **Working**。助手完成一个任务等待你下一条消息时切到 **Done**；需要工具授权时切到 **Attention**（橙色），会话面板会自动弹出。
 
-### Step 4 — View the session board
+### 第 4 步 —— 查看会话面板
 
-Click the pet to toggle the session board. Each card shows:
+点击宠物切换会话面板。每张卡片显示：
 
-- A colored dot (state indicator)
-- The session's project name and last message
-- Click a card to expand it → see timestamps and a **跳转到项目** (Jump to project) button
+- 彩色圆点（状态指示）
+- 项目名与最新消息
+- 点击卡片展开 → 看时间戳，并带两个按钮：
+  - **跳转到项目**：在 VS Code / Cursor（若正在运行）打开该项目，否则在终端打开项目目录
+  - **跳转到聊天**：本地 Claude 会话执行 `claude --resume <sessionId>` 精确回到那个会话；桌面版助手则聚焦其窗口
 
-**Jump to project** opens the project in VS Code / Cursor if either is running, or falls back to a terminal at the project directory.
+**面板交互优化**（本轮新增）：
+- 顶部有**可拖拽标题栏** + ❌**关闭按钮**，可自由移动面板
+- **点击窗口外的其它界面，面板自动关闭**（失焦即隐藏）
+- 宠物被拖动时，面板**跟随移动**
 
-### Step 5 — (Optional) Add SSH remote machines
+### 第 5 步 ——（可选）添加 SSH 远程机器
 
-1. Right-click the pet → **Settings** → **SSH 远程** tab
-2. Fill in host, port, username, and authentication method (password or private key)
-3. Click **测试连接** (Test connection) — wait for the green confirmation
-4. Click **添加** (Add)
+1. 右键宠物 → **设置** → **SSH 远程** 标签
+2. 填主机、端口、用户名、认证方式（密码 / 私钥）
+3. 点 **测试连接** 等待绿色确认
+4. 点 **添加**
 
-Remote sessions appear in the board with an **SSH** badge. If the connection drops, click **重连** (Reconnect) next to that server to retry without restarting the app.
+远程会话在面板中带 **SSH** 角标。连接断开时点 **重连** 即可重试，无需重启应用。
 
-### Step 6 — (Optional) Use your own character sprites
+### 第 6 步 ——（可选）使用自己的角色素材
 
-See the **Custom characters** section below.
-
----
-
-## Settings
-
-Right-click the pet → **Settings** to configure:
-
-| Section | What you can set |
-|---------|-----------------|
-| **Board** | Max sessions shown in the session panel |
-| **Character** | Point to a folder of sprite clips (see below) |
-| **SSH** | Add remote machines to monitor |
-
-SSH credentials are stored in `~/.ai-desk-pet/credentials.json` and are **never committed to the repo**.
+见下文「自定义角色」。
 
 ---
 
-## Custom characters
+## 设置
 
-The animation system uses a **clip** model: each state (`idle`, `working`, `done`, `drag`, `bored`, `attention`) maps to one or more named clip folders.
+右键宠物 → **设置**：
 
-### Step 1 — Cut a sprite sheet into frames with `split2png.py`
+| 分区 | 可配置项 |
+|------|----------|
+| **会话面板** | 面板显示的最大会话数 |
+| **角色** | 指向你自己的精灵图（Clip）文件夹 |
+| **动画** | **动作平滑（光流法补帧）** —— 开关、补帧倍数、计算质量 |
+| **SSH** | 添加要监控的远程机器 |
 
-If you have a sprite sheet (a single image containing all animation frames arranged in a grid), use the included tool to slice it:
+SSH 凭据保存在 `~/.ai-desk-pet/credentials.json`，**不会提交进仓库**。
+
+---
+
+## 动作平滑（光流法补帧）
+
+原始桌宠素材普遍是 7 帧左右的低帧率动画，播放时会有明显卡顿。本项目内置了一个**光流法（optical flow）帧插值模块**（`src/renderer/pet/optical-flow.js`），在每两个关键帧之间计算并生成中间帧，让动作更顺滑。
+
+- 算法：单尺度 Lucas–Kanade 光流估计（由粗到细细化）+ 反向 warp 插值，纯函数实现，可在 Node 下单元测试
+- **完全可选、可配置**，默认关闭，不影响原行为
+
+在 **设置 → 动画** 中：
+
+| 配置项 | 取值 | 说明 |
+|--------|------|------|
+| 启用光流补帧 | 开 / 关 | 关闭即恢复原始帧播放 |
+| 补帧倍数 | 1× / 2× / 3× / 4× | 每两帧之间插入「倍数 − 1」张中间帧（2× 插 1 帧，4× 插 3 帧） |
+| 计算质量 | 快速 / 均衡 | 快速 = 低分辨率光流，更快；均衡 = 更平滑 |
+
+点 **应用并重载桌宠** 生效。计算在本地完成，**开启后首次加载桌宠会稍慢**（已在界面注明）。
+
+> 性能提示：倍数越高、质量越均衡越平滑，但首帧生成耗时越长；老机器建议先用「2× / 快速」。
+
+---
+
+## 自定义角色
+
+动画系统基于 **Clip（片段）** 模型：每个状态（`idle` / `working` / `done` / `drag` / `bored` / `attention`）映射到一或多个命名 Clip 文件夹。
+
+### 第 1 步 —— 用 `split2png.py` 把精灵表切成帧
+
+如果你有一张精灵表（所有帧按网格排在一张图里），用自带工具切：
 
 ```bash
-pip install Pillow   # first time only
+pip install Pillow   # 仅首次
 python split2png.py -i my-character.png -o my-character-frames/ --rows 7 --cols 7
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `-i` / `--input` | — | Path to the sprite sheet PNG (required) |
-| `-o` / `--output` | same folder as input, named after the file | Output folder for the cut frames |
-| `--rows` | `7` | Number of rows in the sprite sheet |
-| `--cols` | `7` | Number of columns in the sprite sheet |
+| 选项 | 默认 | 说明 |
+|------|------|------|
+| `-i` / `--input` | — | 精灵表 PNG 路径（必填） |
+| `-o` / `--output` | 与输入同目录、沿用文件名 | 输出帧文件夹 |
+| `--rows` | `7` | 行数 |
+| `--cols` | `7` | 列数 |
 
-The script detects the true content boundary of each cell (removing empty transparent padding) and outputs files named `row_1_frame_1.png`, `row_1_frame_2.png`, …, `row_7_frame_7.png`.
+脚本会裁掉每格的透明留白，输出 `row_1_frame_1.png` … `row_7_frame_7.png`。**每一行是一个动画 Clip**，同行帧画布尺寸一致，播放不抖动。
 
-Each **row** is one animation clip; all frames in a row are guaranteed the same canvas size so they play without jitter.
-
-### Step 2 — Assign rows to states with `png2state.py`
-
-Once you have the per-frame PNGs, assign each row to an animation state:
+### 第 2 步 —— 用 `png2state.py` 把行分配为状态
 
 ```bash
 python png2state.py \
@@ -136,35 +179,27 @@ python png2state.py \
   -s idle=1 working=2 done=3 drag=4 attention=5 bored=6,7
 ```
 
-| Option | Description |
-|--------|-------------|
-| `-i` / `--input` | Folder containing the `row_X_frame_Y.png` files from Step 1 |
-| `-o` / `--output` | Output folder (default: `<input>/clips/`) |
-| `-s` / `--status` | One or more `state=row` mappings. Multiple rows for the same state are separated by commas and get a `-1`, `-2` suffix (e.g. `bored-1/`, `bored-2/`) |
+| 选项 | 说明 |
+|------|------|
+| `-i` / `--input` | 上一步得到的 `row_X_frame_Y.png` 文件夹 |
+| `-o` / `--output` | 输出文件夹（默认 `<input>/clips/`） |
+| `-s` / `--status` | 一个或多个 `state=row` 映射，同一状态多行用逗号分隔，自动加 `-1`/`-2` 后缀 |
 
-After running, `my-character/clips/` will contain sub-folders named after each state, ready to be loaded into the app.
+### 第 3 步 —— 加载角色
 
-You can use **any name** for a state — clips with names that don't match a built-in state (`idle`, `working`, `done`, `drag`, `attention`, `bored`) will appear in the **State Process Editor** as unrecognized clips and can be wired to states manually.
+1. 右键宠物 → **设置** → **角色**（动作设置）
+2. 点 **浏览** 指向 clips 文件夹（如 `my-character/clips/`）
+3. 点 **应用到预设** —— 自动探测子文件夹并按名映射到状态
+4. 打开 **State Process Editor** 点 **应用执行** 应用到实时宠物
 
-### Step 3 — Load the character
+也可用 **State Process Editor**（设置 → 自定义组件 → 打开 State Process Editor）手动把 Clip 接到状态，并单独预览每个动画。
 
-1. Right-click pet → **Settings** → **Character** tab (动作设置)
-2. Click **浏览** and point to the clips folder (e.g. `my-character/clips/`)
-3. Click **应用到预设** — the app auto-detects sub-folders and maps them to states by name
-4. A prompt will confirm success. Open **State Process Editor** and click **应用执行** to apply the changes to the live pet.
-
-Or open **State Process Editor** (Settings → 自定义组件 → Open State Process Editor) to manually wire clips to states and preview each animation in isolation.
-
-### Folder layout expected by the app
+### 应用期望的目录结构
 
 ```
 my-character/clips/
-  idle/             ← frames for idle
-    row_1_frame_1.png
-    row_1_frame_2.png
-    ...
-  idle-2/           ← optional second idle variant
-    ...
+  idle/
+  idle-2/        ← 可选的第二个 idle 变体
   working/
   done/
   drag/
@@ -173,113 +208,148 @@ my-character/clips/
   bored-2/
 ```
 
-PNG frames inside each folder are sorted alphabetically and played in order.
+每个文件夹内的 PNG 帧按字母序播放。
 
-### Three-phase clips (recommended)
+### 三段式 Clip（推荐）
 
-If a clip has ≥ 3 frames and **three-phase** is enabled (the default):
+Clip ≥ 3 帧且开启三段式（默认）时：
 
-| Frame | Role |
-|-------|------|
-| First | **Intro** — plays once on state enter |
-| Middle frames | **Loop** — cycles until state changes |
-| Last | **Outro** — plays once before leaving the state |
+| 帧 | 角色 |
+|----|------|
+| 首帧 | **Intro** —— 进入状态时播放一次 |
+| 中间帧 | **Loop** —— 循环直到状态改变 |
+| 末帧 | **Outro** —— 离开状态前播放一次 |
 
 ---
 
 ## State Process Editor
 
-Open via Settings → 自定义组件 → **State Process Editor**.
+设置 → 自定义组件 → **State Process Editor**：
 
-- Drag state nodes to rearrange the graph
-- Click a state's **clip rows** to see which clips are assigned
-- Right-click a clip to **rename** it
-- **Debug panel** (right sidebar) — click a state to open an isolated preview window showing that animation; click a specific clip within it to pin exactly that clip for inspection
-- Click **应用执行** (top-right) to save the preset and apply changes to the live pet immediately
-- The real desktop pet is **not affected** while the debug preview is open
-
----
-
-## SSH monitoring
-
-1. Right-click pet → Settings → **SSH 远程** tab
-2. Add a server (host, port, username, auth method)
-3. Click **测试连接** to verify
-4. Click **添加** — the pet immediately starts monitoring remote Claude Code sessions alongside local ones
-5. If a connection drops, click the **重连** button next to that server to reconnect without restarting the app
-
-Remote sessions appear in the session board with an **SSH** badge showing the server name.
-
-> **Session path on remote**: the same `~/.claude/projects/` and `~/.claude/sessions/` directories. The SSH monitor reads these over the existing SSH connection — no agent or daemon is required on the remote machine.
+- 拖动状态节点重排图
+- 点状态的 **Clip 行** 看分配了哪些 Clip
+- 右键 Clip 可**重命名**
+- **调试面板**（右侧）—— 点状态打开独立预览窗看该动画；点其中某 Clip 可固定只看那一条
+- 点右上角 **应用执行** 保存预设并立即应用到实时宠物
+- 调试预览**不会**影响真实桌宠
 
 ---
 
-## Building a distributable
+## SSH 监控
+
+1. 右键宠物 → 设置 → **SSH 远程**
+2. 添加服务器（主机、端口、用户名、认证方式）
+3. 点 **测试连接** 校验
+4. 点 **添加** —— 宠物立即开始和本地一起监控远程助手会话
+5. 连接断开点 **重连** 重试，无需重启
+
+远程会话在面板中带 **SSH** 角标并显示服务器名。
+
+> 远程会话路径同样为 `~/.claude/projects/` 与 `~/.claude/sessions/`。SSH 监控通过现有 SSH 连接读取，远程机器无需安装 agent / 守护进程。
+
+---
+
+## 构建可执行文件（.exe / .dmg）
+
+本机需要已安装对应平台的 Electron 构建环境。
 
 ```bash
-# macOS (.dmg)
-npm run build
-
-# Windows (NSIS installer + portable .exe)
+# Windows：NSIS 安装包 + 便携 exe（输出到 dist/）
 npm run build:win
 
-# Both at once
+# macOS（.dmg）
+npm run build
+
+# 同时构建两个平台
 npm run build:all
 ```
 
-Built files land in `dist/`. The Windows build requires running on Windows or using an appropriate cross-compile environment (electron-builder cross-compile).
+### Windows 构建说明
+
+- `win` 目标包含 **NSIS 安装程序**（x64 / ia32）和 **便携版 exe**（x64），产物都在 `dist/`
+- 应用图标使用 `assets/icon.ico`
+- 未签名构建会带 Windows SmartScreen 提示，属正常现象；如需去掉签名请配置代码签名证书
+- 打包内容白名单见 `package.json` 的 `build.files`（仅含 `src/`、`assets/`、`config/`），原始 `frames/`、`node_modules/`、`tests/` 不会被打进安装包
+- `assets/pets` 通过 `extraResources` 随包分发
+
+### 从命令行只构建 x64（更快）
+
+```bash
+npx electron-builder --win --x64
+```
 
 ---
 
-## Project structure
+## 项目结构
 
 ```
 ai-desk-pet/
 ├── src/
 │   ├── main/
-│   │   ├── index.js          # Electron main — window management
-│   │   ├── ipc.js            # IPC handlers
-│   │   ├── preload.js        # Context bridge
+│   │   ├── index.js            # Electron 主进程 —— 窗口管理、失焦关闭面板
+│   │   ├── ipc.js              # IPC 处理（含 open-chat / 光流默认配置）
+│   │   ├── preload.js          # 上下文桥接
 │   │   └── monitor/
-│   │       ├── local.js      # Watches ~/.claude/projects/ logs
-│   │       └── ssh.js        # SSH remote log watcher
+│   │       ├── local.js        # 监控本机 ~/.claude 会话 + Agent 进程
+│   │       ├── agents.js       # 跨平台 Agent 检测（claude/codex cli & desk）
+│   │       └── ssh.js          # SSH 远程日志监控
 │   └── renderer/
-│       ├── pet/              # Transparent pet window
-│       ├── board/            # Session status panel
-│       ├── settings/         # Settings UI
-│       └── state-editor/     # Clip / state graph editor
+│       ├── pet/                # 透明宠物窗口
+│       │   ├── engine.js       # 动画引擎 + 状态机 + 光流补帧接入
+│       │   ├── optical-flow.js # 光流法帧插值（纯函数）
+│       │   └── index.html
+│       ├── board/              # 会话状态面板（可拖拽 / 自动关闭）
+│       ├── settings/           # 设置界面（含动画面板）
+│       └── state-editor/       # Clip / 状态图编辑器
 ├── assets/
-│   ├── clips/                # Bundled demo sprite frames
-│   ├── icon.icns             # macOS app icon
-│   └── icon.ico              # Windows app icon
+│   ├── clips/                  # 内置演示精灵帧（含 attention 动画）
+│   ├── pets/default/           # 默认宠物定义
+│   ├── icon.ico                # Windows 图标
+│   └── icon.png                # 通用图标
 ├── config/
-│   └── presets/default.json  # Default clip-to-state mapping
-├── split2png.py              # Step 1: cut a sprite sheet into per-frame PNGs
-├── png2state.py              # Step 2: assign rows to animation states
-└── tests/
+│   └── presets/default.json    # 默认 Clip → 状态映射（跨平台相对路径）
+├── split2png.py                # 第 1 步：精灵表切帧
+├── png2state.py                # 第 2 步：行 → 状态
+└── tests/                      # Jest 测试（状态机 / 光流 / Agent 检测）
 ```
 
 ---
 
-## FAQ
+## 测试
 
-**The pet doesn't animate / clips look wrong**  
-Settings → Character → re-select your clip root folder, or check that PNG files inside each clip sub-folder are named so they sort in playback order (e.g. `row_1_frame_1.png`, `row_1_frame_2.png`…).
+```bash
+npm test
+```
 
-**SSH sessions don't appear**  
-Make sure Claude Code is actually running on the remote machine and that the remote user's `~/.claude/projects/` directory is readable by the SSH user. Use the **重连** button to retry a dropped connection.
-
-**Jump to project opens a new terminal window instead of focusing the existing one**  
-This is a known limitation — reliably identifying which terminal tab hosts a specific SSH session requires per-terminal APIs that vary by version and shell configuration. The app brings the terminal app to the foreground if it is already running; if no terminal is running it opens a new window with an SSH connection to the project directory.
-
-**Does this work with Claude.ai web or the API?**  
-No — it monitors the local file-based session logs written by the Claude Code CLI. It does not hook into the web interface or any API.
-
-**Windows: the pet window is not transparent**  
-Transparent frameless windows require hardware-accelerated compositing. On some older GPUs or when running under Remote Desktop / certain VM configurations, transparency may not render correctly. This is an Electron limitation on Windows.
+覆盖：状态机优先级与转换、光流插值正确性、Agent 分类逻辑等。
 
 ---
 
-## License
+## 常见问题
+
+**宠物不动 / Clip 显示异常**  
+设置 → 角色 → 重新选择 Clip 根目录；确认每个 Clip 子文件夹内 PNG 按播放顺序命名（`row_1_frame_1.png` …）。
+
+**开启光流补帧后首帧很慢 / 卡**  
+降低倍数（用 2×）或切到「快速」质量；老机器建议关闭补帧。
+
+**SSH 会话不出现**  
+确认远程机器确实在跑 Claude Code，且远程用户的 `~/.claude/projects/` 对 SSH 用户可读。用 **重连** 重试。
+
+**跳转到聊天打开了新终端而不是聚焦已有会话**  
+这是已知限制 —— 可靠识别某个终端标签页对应哪个 SSH 会话需要各终端私有 API。应用会在终端已运行时把它提到前台；若没终端在跑则在项目目录开新窗口。
+
+**它支持 Claude.ai 网页版或 API 吗？**  
+不支持 —— 它监控 Claude Code CLI 写入本地的文件会话日志，不接入网页或 API。Codex 等以「是否在运行」驱动状态。
+
+**Windows 上宠物窗口不透明**  
+透明无边框窗口依赖硬件加速合成。在部分老旧 GPU 或远程桌面 / 某些虚拟机下可能不透明，这是 Electron 在 Windows 上的限制。
+
+**Windows 上 claude-cli 与 claude-desk 区分不准**  
+二者进程名都是 `claude.exe`，靠大小写/路径区分属 best-effort。若你的环境特殊，改 `src/main/monitor/agents.js` 的 `classify()`。
+
+---
+
+## 许可证
 
 MIT

@@ -3,37 +3,42 @@
   "name": "默认预设",
   "clipDefs": {
     "attention": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/attention",
+      "folder": "assets/clips/attention",
       "fps": 2.78,
       "threePhase": true
     },
     "bored": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/bored",
+      "folder": "assets/clips/bored",
       "fps": 2.78,
       "threePhase": true
     },
     "done": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/done",
+      "folder": "assets/clips/done",
       "fps": 2.78,
       "threePhase": true
     },
-    "drag-1": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/drag-1",
+    "drag": {
+      "folder": "assets/clips/drag",
       "fps": 2.78,
       "threePhase": true
     },
-    "drag-2": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/drag-2",
+    "idle-1": {
+      "folder": "assets/clips/idle-1",
       "fps": 2.78,
       "threePhase": true
     },
-    "idle": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/idle",
+    "idle-2": {
+      "folder": "assets/clips/idle-2",
+      "fps": 2.78,
+      "threePhase": true
+    },
+    "idle-3": {
+      "folder": "assets/clips/idle-3",
       "fps": 2.78,
       "threePhase": true
     },
     "working": {
-      "folder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips/working",
+      "folder": "assets/clips/working",
       "fps": 2.78,
       "threePhase": true
     }
@@ -41,7 +46,9 @@
   "states": {
     "idle": {
       "clips": [
-        "idle"
+        "idle-1",
+        "idle-2",
+        "idle-3"
       ],
       "mode": "random"
     },
@@ -71,8 +78,7 @@
     },
     "drag": {
       "clips": [
-        "drag-1",
-        "drag-2"
+        "drag"
       ],
       "mode": "random"
     }
@@ -108,10 +114,11 @@
     "attention",
     "bored",
     "done",
-    "drag-1",
-    "drag-2",
-    "idle",
+    "drag",
+    "idle-1",
+    "idle-2",
+    "idle-3",
     "working"
   ],
-  "clipsRootFolder": "/Users/tachibanakanade/ai-desk-pet/charactor/Shima-Rin/clips"
+  "clipsRootFolder": "assets/clips"
 }

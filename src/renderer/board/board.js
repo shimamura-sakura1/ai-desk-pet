@@ -115,13 +115,23 @@ function buildCard(s, isExpanded) {
     <button class="detail-open"
       data-filepath="${esc(s.filePath)}"
       data-source="${esc(s.source ?? 'local')}"
-      data-sid="${esc(s.id)}">跳转到项目</button>` : '';
+      data-sid="${esc(s.id)}">打开项目</button>` : '';
+
+  const chatBtn = (s.filePath && s.source !== 'ssh') ? `
+    <button class="detail-chat"
+      data-filepath="${esc(s.filePath)}"
+      data-source="${esc(s.source ?? 'local')}"
+      data-sid="${esc(s.id)}"
+      data-agent="${esc(s.agent ?? 'claude-cli')}">跳转到聊天</button>` : '';
+
+  const actionBtns = (openBtn || chatBtn) ? `
+    <div class="detail-actions">${chatBtn}${openBtn}</div>` : '';
 
   return `
     <div class="card card-${info.cls} expanded" data-id="${esc(s.id)}" role="button" tabindex="0">
       ${header}
       <div class="card-detail">
-        ${nameLine}${msgLine}${timeLine}${actionBanner}${openBtn}
+        ${nameLine}${msgLine}${timeLine}${actionBanner}${actionBtns}
       </div>
     </div>`;
 }
@@ -134,10 +144,11 @@ function calcHeight(visible) {
   const COLLAPSED  = 44;
   const GAP        = 6;
   const PADDING    = 16;
+  const HEADER     = 38;   // drag header bar height
   const EXP_BASE   = 96;
   const EXP_ACTION = 30;
 
-  let h = PADDING + visible.length * COLLAPSED + Math.max(0, visible.length - 1) * GAP;
+  let h = PADDING + HEADER + visible.length * COLLAPSED + Math.max(0, visible.length - 1) * GAP;
   const exp = visible.find(s => s.id === expandedId);
   if (exp) {
     h += EXP_BASE;
@@ -188,7 +199,7 @@ function render(sessions) {
     });
   }
 
-  // "跳转到项目" buttons
+  // "跳转到项目" + "跳转到聊天" buttons
   for (const btn of list.querySelectorAll('.detail-open')) {
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -199,8 +210,42 @@ function render(sessions) {
       });
     });
   }
+  for (const btn of list.querySelectorAll('.detail-chat')) {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      window.petBridge.openChat({
+        filePath:  btn.dataset.filepath,
+        source:    btn.dataset.source,
+        sessionId: btn.dataset.sid,
+        agent:     btn.dataset.agent,
+      });
+    });
+  }
 
   window.petBridge.boardResize(calcHeight(visible));
+}
+
+// ── Detected agents chip ─────────────────────────────────────────
+
+function renderAgents(agents) {
+  const chip = document.getElementById('agents-chip');
+  if (!chip) return;
+  if (!agents || !agents.length) { chip.classList.add('hidden'); return; }
+  const labels = agents.map(a => {
+    const map = {
+      'claude-cli':  'Claude CLI',
+      'codex-cli':   'Codex CLI',
+      'claude-desk': 'Claude Desk',
+      'codex-desk':  'Codex Desk',
+    };
+    return map[a] || a;
+  });
+  chip.textContent = '运行中：' + labels.join('、');
+  chip.classList.remove('hidden');
+}
+
+function closeBoard() {
+  window.close();
 }
 
 // ── Init ────────────────────────────────────────────────────────
@@ -209,4 +254,6 @@ window.petBridge.getUserConfig().then(cfg => {
   maxSessions = cfg?.board?.maxSessions ?? 3;
 });
 
+document.getElementById('board-close')?.addEventListener('click', closeBoard);
 window.petBridge.onSessionsUpdate(sessions => render(sessions));
+window.petBridge.onAgentsUpdate?.(agents => renderAgents(agents));
