@@ -335,4 +335,154 @@ document.getElementById('btn-apply-of')?.addEventListener('click', async () => {
   setTimeout(() => setStatus('status-of', '', true), 6000);
 });
 
+// ── 导入角色（一键导入）────────────────────────────────────────────
+const IMPORT_COLS = 7;
+let _importImg = null;   // HTMLImageElement of the uploaded sprite sheet
+
+function initImportCharacter() {
+  const pickBtn   = document.getElementById('btn-pick-img');
+  const fileInput = document.getElementById('charImage');
+  const rowCount  = document.getElementById('rowCount');
+
+  pickBtn?.addEventListener('click', () => fileInput?.click());
+  fileInput?.addEventListener('change', e => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        _importImg = img;
+        const rows = clampRows(Number(rowCount.value) || 6);
+        rowCount.value = rows;
+        updateImgInfo(rows);
+        document.getElementById('importPreview').style.display = 'block';
+        renderImportPreview();
+        renderRowMapping();
+      };
+      img.onerror = () => setStatus('status-import', '图片加载失败', false);
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  rowCount?.addEventListener('change', () => {
+    const rows = clampRows(Number(rowCount.value) || 6);
+    rowCount.value = rows;
+    if (_importImg) {
+      updateImgInfo(rows);
+      renderImportPreview();
+      renderRowMapping();
+    }
+  });
+
+  document.getElementById('btn-import-char')?.addEventListener('click', doImportCharacter);
+}
+
+function clampRows(n) {
+  return Math.max(1, Math.min(20, n || 1));
+}
+
+function updateImgInfo(rows) {
+  if (!_importImg) return;
+  const fw = Math.round(_importImg.width / IMPORT_COLS);
+  const fh = Math.round(_importImg.height / rows);
+  document.getElementById('imgInfo').textContent =
+    `图片 ${_importImg.width}×${_importImg.height}px · 每帧约 ${fw}×${fh}px`;
+}
+
+function renderImportPreview() {
+  const canvas = document.getElementById('importCanvas');
+  if (!canvas || !_importImg) return;
+  const ctx = canvas.getContext('2d');
+  const maxW = 360;
+  const scale = Math.min(1, maxW / _importImg.width);
+  const w = Math.round(_importImg.width * scale);
+  const h = Math.round(_importImg.height * scale);
+  canvas.width = w; canvas.height = h;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(_importImg, 0, 0, w, h);
+
+  const rows = Number(document.getElementById('rowCount').value) || 6;
+  ctx.strokeStyle = 'rgba(203,166,247,0.7)';
+  ctx.lineWidth = 1;
+  for (let c = 1; c < IMPORT_COLS; c++) {
+    const x = (c / IMPORT_COLS) * w;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
+  for (let r = 1; r < rows; r++) {
+    const y = (r / rows) * h;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+}
+
+function renderRowMapping() {
+  const container = document.getElementById('rowMapping');
+  if (!container || !_importImg) return;
+  const rows   = Number(document.getElementById('rowCount').value) || 6;
+  const states = ['idle', 'bored', 'working', 'done', 'drag', 'attention'];
+  container.innerHTML = '';
+  for (let r = 0; r < rows; r++) {
+    const def = states[r % states.length];
+    const item = document.createElement('div');
+    item.className = 'row-map-item';
+    item.innerHTML = `
+      <span class="row-label">第 ${r + 1} 行</span>
+      <select data-row="${r}">
+        ${states.map(s => `<option value="${s}" ${s === def ? 'selected' : ''}>${STATE_NAME_MAP[s] ?? s}（${s}）</option>`).join('')}
+      </select>`;
+    container.appendChild(item);
+  }
+}
+
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload  = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+async function doImportCharacter() {
+  if (!_importImg) { setStatus('status-import', '请先选择角色图片', false); return; }
+  const name = document.getElementById('petName').value.trim();
+  if (!name) { setStatus('status-import', '请填写宠物名称', false); return; }
+
+  const rows   = Number(document.getElementById('rowCount').value) || 6;
+  const selects = [...document.querySelectorAll('#rowMapping select')];
+
+  setStatus('status-import', '切割中…', true);
+  const imgW = _importImg.width, imgH = _importImg.height;
+  const cellW = imgW / IMPORT_COLS, cellH = imgH / rows;
+
+  const payloadRows = [];
+  for (let r = 0; r < rows; r++) {
+    const state  = selects[r]?.value || 'idle';
+    const frames = [];
+    for (let c = 0; c < IMPORT_COLS; c++) {
+      const cw = Math.max(1, Math.round(cellW));
+      const ch = Math.max(1, Math.round(cellH));
+      const off = document.createElement('canvas');
+      off.width = cw; off.height = ch;
+      const octx = off.getContext('2d');
+      octx.clearRect(0, 0, cw, ch);
+      octx.drawImage(_importImg, c * cellW, r * cellH, cellW, cellH, 0, 0, cw, ch);
+      const blob = await new Promise(res => off.toBlob(res, 'image/png'));
+      if (!blob) continue;
+      frames.push(await blobToDataURL(blob));
+    }
+    payloadRows.push({ state, frames });
+  }
+
+  const result = await window.settingsBridge.importCharacter({ name, rows: payloadRows });
+  if (result?.ok) {
+    setStatus('status-import', `✓ 已导入「${name}」并切换为当前角色，桌宠正在重载…`, true);
+    setTimeout(() => setStatus('status-import', '', true), 8000);
+  } else {
+    setStatus('status-import', `导入失败：${result?.error ?? '未知错误'}`, false);
+  }
+}
+
 load();
+initImportCharacter();

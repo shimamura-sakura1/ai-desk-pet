@@ -28,6 +28,49 @@ function getRunningProcesses(cb) {
 // In development (npm start) use the in-repo config/ folder as before.
 const APP_ROOT   = path.join(__dirname, '../..');
 const PRESET_DIR = path.join(__dirname, '../../config/presets');
+// User-created presets & clips live in userData so they survive packaged (read-only asar) builds.
+const USER_PRESET_DIR = path.join(app.getPath('userData'), 'presets');
+const USER_PETS_DIR   = path.join(app.getPath('userData'), 'pets');
+
+// Resolve a preset: userData override (if present) wins over the shipped config/presets file.
+function resolvePresetPath(name) {
+  const userPath = path.join(USER_PRESET_DIR, `${name}.json`);
+  if (fs.existsSync(userPath)) return userPath;
+  return path.join(PRESET_DIR, `${name}.json`);
+}
+
+// Build a preset JSON from sliced rows (pure — no Electron / fs access, easy to unit test).
+// Each `row` is { state, frames:[dataURL...] }; `petDir` is where frames are persisted.
+function buildCharacterPreset(name, rows, petDir) {
+  const clipDefs = {};
+  const states   = {};
+  const seen     = {};
+  for (const row of rows) {
+    const state  = row.state || 'idle';
+    const frames = row.frames || [];
+    if (!frames.length) continue;
+    // Unique clip id per row (e.g. idle, idle-2, idle-3) so duplicate state maps cleanly.
+    const n = (seen[state] = (seen[state] || 0) + 1);
+    const clipId = n === 1 ? state : `${state}-${n}`;
+    const folder = path.join(petDir, clipId);
+    clipDefs[clipId] = { folder, fps: 2.78, threePhase: true };
+    (states[state] = states[state] ?? { clips: [], mode: 'random' }).clips.push(clipId);
+  }
+  const layout = {};
+  Object.keys(states).forEach((state, i) => {
+    layout[state] = { x: 60 + (i % 3) * 200, y: 60 + Math.floor(i / 3) * 220 };
+  });
+  return {
+    version: 1,
+    name,
+    clipDefs,
+    states,
+    layout,
+    transitions: [],
+    rootClipIds: Object.keys(clipDefs),
+    clipsRootFolder: petDir,
+  };
+}
 const USER_CONFIG_PATH = app.isPackaged
   ? path.join(app.getPath('userData'), 'user.json')
   : path.join(__dirname, '../../config/user.json');
@@ -194,7 +237,7 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEdi
   ipcMain.handle('get-preset', () => {
     const cfg        = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
     const name       = cfg.activePreset ?? 'default';
-    const presetPath = path.join(PRESET_DIR, `${name}.json`);
+    const presetPath = resolvePresetPath(name);
     const preset     = JSON.parse(fs.readFileSync(presetPath, 'utf8'));
 
     // Resolve each clipDef folder → sorted file:// frame URLs
@@ -216,8 +259,80 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEdi
   ipcMain.handle('save-preset', (_e, presetData) => {
     const cfg  = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
     const name = cfg.activePreset ?? 'default';
-    fs.writeFileSync(path.join(PRESET_DIR, `${name}.json`), JSON.stringify(presetData, null, 2));
+    if (!fs.existsSync(USER_PRESET_DIR)) fs.mkdirSync(USER_PRESET_DIR, { recursive: true });
+    fs.writeFileSync(path.join(USER_PRESET_DIR, `${name}.json`), JSON.stringify(presetData, null, 2));
     return true;
+  });
+
+  // ── One-click character import ────────────────────────────────────────
+  // Renderer slices a 7-column sprite sheet (rows = states) into PNG frames and
+  // sends them here; we persist frames + a generated preset, then switch to it.
+  ipcMain.handle('import-character', async (_e, payload) => {
+    try {
+      const name = (payload?.name ?? '').trim();
+      const rows = payload?.rows ?? [];
+      if (!name) return { ok: false, error: '请填写宠物名称' };
+      if (!/^[a-zA-Z0-9-]+$/.test(name)) {
+        return { ok: false, error: '宠物名称只能包含字母、数字和连字符（英文/拼音）' };
+      }
+      if (!rows.length) return { ok: false, error: '没有可导入的帧数据' };
+
+      if (!fs.existsSync(USER_PETS_DIR))     fs.mkdirSync(USER_PETS_DIR, { recursive: true });
+      if (!fs.existsSync(USER_PRESET_DIR))    fs.mkdirSync(USER_PRESET_DIR, { recursive: true });
+
+      const petDir   = path.join(USER_PETS_DIR, name);
+      const clipDefs = {};
+      const states   = {};
+      const seen     = {};
+
+      for (const row of rows) {
+        const state  = row.state || 'idle';
+        const frames = row.frames || [];
+        if (!frames.length) continue;
+
+        // Unique clip id per row (e.g. idle, idle-2, idle-3) so duplicates map cleanly.
+        const n = (seen[state] = (seen[state] || 0) + 1);
+        const clipId = n === 1 ? state : `${state}-${n}`;
+
+        const folder = path.join(petDir, clipId);
+        fs.mkdirSync(folder, { recursive: true });
+
+        frames.forEach((dataUrl, i) => {
+          const b64 = String(dataUrl).split(',')[1] || '';
+          if (!b64) return;
+          const buf = Buffer.from(b64, 'base64');
+          fs.writeFileSync(path.join(folder, `frame_${String(i).padStart(2, '0')}.png`), buf);
+        });
+
+        clipDefs[clipId] = { folder, fps: 2.78, threePhase: true };
+        (states[state] = states[state] ?? { clips: [], mode: 'random' }).clips.push(clipId);
+      }
+
+      if (!Object.keys(clipDefs).length) {
+        return { ok: false, error: '未生成任何有效帧，请检查图片' };
+      }
+
+      const preset = buildCharacterPreset(name, rows, petDir);
+
+      fs.writeFileSync(path.join(USER_PRESET_DIR, `${name}.json`), JSON.stringify(preset, null, 2));
+
+      // Switch active preset and persist.
+      const cfg = JSON.parse(fs.readFileSync(USER_CONFIG_PATH, 'utf8'));
+      cfg.activePreset   = name;
+      cfg.pet            = cfg.pet ?? {};
+      cfg.pet.activePet  = name;
+      fs.writeFileSync(USER_CONFIG_PATH, JSON.stringify(cfg, null, 2));
+
+      // Reload pet + state editor windows with the new character.
+      const pw = getPetWindow?.();
+      if (pw && !pw.isDestroyed()) pw.webContents.send('preset-reload');
+      const ew = getStateEditorWindow?.();
+      if (ew && !ew.isDestroyed()) ew.webContents.send('preset-reload');
+
+      return { ok: true, petDir, presetPath: path.join(USER_PRESET_DIR, `${name}.json`) };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
   });
 
   ipcMain.handle('export-preset', async (_e, data) => {
@@ -471,4 +586,4 @@ function setupIPC({ getPetWindow, getBoardWindow, getDebugPetWindow, getStateEdi
   return { notifyPetState, notifyTokenUpdate, notifySessions, notifyAgents };
 }
 
-module.exports = { setupIPC };
+module.exports = { setupIPC, buildCharacterPreset, resolvePresetPath };

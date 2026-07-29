@@ -160,6 +160,18 @@
     }
     .switch input:checked + .slider { background: #cba6f7; }
     .switch input:checked + .slider::before { transform: translateX(18px); }
+
+    /* ── 导入角色 (one-click character import) ── */
+    .import-preview { margin: 12px 0; }
+    #importCanvas { background: #181825; border: 1px solid #313244; border-radius: 8px; max-width: 100%; }
+    .row-mapping { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+    .row-map-item {
+      display: flex; align-items: center; gap: 12px;
+      background: #313244; border-radius: 6px; padding: 8px 12px;
+    }
+    .row-map-item .row-label { font-size: 12px; color: #a6adc8; min-width: 54px; flex-shrink: 0; }
+    .row-map-item select { margin-bottom: 0; flex: 1; }
+    .row-map-item .row-count { font-size: 12px; color: #6c7086; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -169,6 +181,7 @@
 
     <div class="tab" data-panel="actions">动作设置</div>
     <div class="tab" data-panel="anim">动画</div>
+    <div class="tab" data-panel="import">导入角色</div>
     <div class="tab" data-panel="components">自定义组件<span class="wip-badge">WIP</span></div>
   </div>
 
@@ -280,6 +293,46 @@
     <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-primary" id="btn-apply-of">应用并重载桌宠</button>
       <div class="status" id="status-of"></div>
+    </div>
+  </div>
+
+  <!-- 导入角色 -->
+  <div id="panel-import" class="panel">
+    <h3>一键导入角色</h3>
+    <p class="hint">
+      上传一张角色精灵图，系统自动切割成动画帧并生成本地预设。<br>
+      <b>图片规范：</b>PNG、透明背景；<b>固定 7 列</b>（每行动作 7 帧）；<b>行数可调</b>（每一行对应一个动作状态）。<br>
+      所有帧需为相同尺寸。导入后会在本地生成角色并立即切换为当前角色。
+    </p>
+
+    <div class="field">
+      <label>角色图片（PNG）</label>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-secondary" id="btn-pick-img">选择图片…</button>
+        <input id="charImage" type="file" accept="image/png,image/*" style="display:none">
+        <span id="imgInfo" class="hint" style="margin:0"></span>
+      </div>
+    </div>
+
+    <div class="import-preview" id="importPreview" style="display:none">
+      <canvas id="importCanvas"></canvas>
+    </div>
+
+    <div class="field" style="margin-top:8px">
+      <label>动作行数（每一行 = 一个状态）</label>
+      <input id="rowCount" type="number" value="6" min="1" max="20" style="width:120px">
+    </div>
+
+    <div id="rowMapping" class="row-mapping"></div>
+
+    <div class="field" style="margin-top:8px">
+      <label>宠物名称（英文/拼音，用于本地文件夹）</label>
+      <input id="petName" type="text" placeholder="my-pet" style="width:240px">
+    </div>
+
+    <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary" id="btn-import-char">导入并应用</button>
+      <div class="status" id="status-import"></div>
     </div>
   </div>
 

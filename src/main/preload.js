@@ -44,4 +44,6 @@ contextBridge.exposeInMainWorld('settingsBridge', {
   saveSSHCreds:     (creds)   => ipcRenderer.invoke('save-ssh-creds', creds),
   reconnectSSH:     (idx)     => ipcRenderer.invoke('reconnect-ssh', idx),
   selectFile:       (opts)    => ipcRenderer.invoke('select-file', opts),
+  // One-click character import: receives sliced frame data + metadata, persists & applies.
+  importCharacter:   (payload) => ipcRenderer.invoke('import-character', payload),
 });
