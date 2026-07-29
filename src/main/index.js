@@ -142,8 +142,10 @@ function createDebugPetWindow(pendingState = null) {
 }
 
 function createTray() {
+  // Use a bundled asset (assets/ is whitelisted in build.files); frames/ is NOT
+  // bundled, so referencing it broke the packaged tray icon on every platform.
   const icon = nativeImage
-    .createFromPath(path.join(__dirname, '../../frames/row_3_frame_4.png'))
+    .createFromPath(path.join(__dirname, '../../assets/icon.png'))
     .resize({ width: 18, height: 18 });
 
   tray = new Tray(icon);

@@ -9,6 +9,7 @@
     "build": "electron-builder --mac dmg",
     "build:win": "electron-builder --win",
     "build:all": "electron-builder --mac dmg --win",
+    "build:icns": "node scripts/make-icns.js",
     "test": "jest"
   },
   "keywords": [
