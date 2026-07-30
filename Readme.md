@@ -4,6 +4,8 @@
 
 **支持 macOS 与 Windows（已完整适配）。**
 
+> **一句话**：AI 桌宠 = 一个常驻屏幕角落的透明桌宠，实时把 Claude Code / Codex 等 AI 编程助手的工作状态（思考中 / 等待授权 / 已完成）用动画展示出来，支持本机与 SSH 远程监控。macOS / Windows 双平台。
+
 ---
 
 ## 它能做什么
@@ -272,30 +274,54 @@ Clip ≥ 3 帧且开启三段式（默认）时：
 
 ---
 
-## 构建可执行文件（.exe / .dmg）
+## 部署 / 安装
 
-本机需要已安装对应平台的 Electron 构建环境。
+本项目是 Electron 桌面应用，有三种使用方式：**直接用现成安装包**（推荐普通用户）、**从源码运行**（开发者 / 自托管）、**自己打包安装程序**（分发给他人）。
+
+### 方式 A：下载安装包（普通用户，无需 Node.js）
+
+前往 GitHub Releases，下载对应平台的产物，双击即可使用：
+
+| 平台 | 文件 | 说明 |
+|------|------|------|
+| Windows | `AI桌宠 Setup x.x.x.exe` | NSIS 安装包（x64 / ia32），可自选安装目录，并创建桌面与开始菜单快捷方式 |
+| Windows | `AI桌宠 x.x.x.exe` | 便携版，无需安装，拷到任意位置双击运行 |
+| macOS | `AI桌宠-x.x.x.dmg` | 打开后把 App 拖入「应用程序」（同时含 arm64 / x64） |
+
+> 未签名的 Windows 安装包首次运行会被 SmartScreen 拦截，点「仍要运行」即可；未公证（notarize）的 macOS 应用首次打开时需 **右键 → 打开** 以绕过 Gatekeeper。若要分发给他人，建议配置代码签名（Windows）或对 macOS 做签名 + 公证。
+
+### 方式 B：从源码运行（开发者 / 自托管）
+
+需要 **Node.js 18+** 与 Git：
 
 ```bash
-# Windows：NSIS 安装包 + 便携 exe（输出到 dist/）
-npm run build:win
-
-# macOS（.dmg）
-npm run build
-
-# 同时构建两个平台
-npm run build:all
+git clone https://github.com/shimamura-sakura1/ai-desk-pet.git
+cd ai-desk-pet
+npm install
+npm start          # 启动（透明、置顶、右下角）
+# npm run dev     # 开发模式（带额外日志）
 ```
 
-### Windows 构建说明
+### 方式 C：自己打包安装程序
 
-- `win` 目标包含 **NSIS 安装程序**（x64 / ia32）和 **便携版 exe**（x64），产物都在 `dist/`
-- 应用图标使用 `assets/icon.ico`
-- 未签名构建会带 Windows SmartScreen 提示，属正常现象；如需去掉签名请配置代码签名证书
-- 打包内容白名单见 `package.json` 的 `build.files`（仅含 `src/`、`assets/`、`config/`），原始 `frames/`、`node_modules/`、`tests/` 不会被打进安装包
-- `assets/pets` 通过 `extraResources` 随包分发
+使用 [electron-builder](https://www.electron.build/)，产物输出到 `dist/`：
 
-### 从命令行只构建 x64（更快）
+```bash
+npm run build:win     # Windows：NSIS 安装包 + 便携 exe
+npm run build         # macOS：.dmg（⚠️ 必须在 macOS 上执行）
+npm run build:all     # 同时构建（mac 包仍需在 macOS 上跑）
+```
+
+**要点：**
+- **macOS 安装包只能在 macOS 上构建** —— Windows / Linux 无法产出 `.dmg`。
+- **应用图标**：仓库已内置 `assets/icon.icns`（macOS）与 `assets/icon.ico`（Windows）。若图标丢失，可一键重新生成（跨平台、无需 macOS 的 `iconutil`）：
+  ```bash
+  npm run build:icns   # 由 assets/icon.png 生成 assets/icon.icns
+  ```
+- 打包白名单见 `package.json` 的 `build.files`（仅 `src/`、`assets/`、`config/`），`node_modules/`、`tests/`、`frames/` 不会进安装包；`assets/pets` 经 `extraResources` 一并随包分发。
+- 去除 SmartScreen / Gatekeeper 拦截需配置代码签名（Windows）或对 macOS 做签名 + 公证。
+
+### 只想构建 Windows x64（更快）
 
 ```bash
 npx electron-builder --win --x64
@@ -327,8 +353,11 @@ ai-desk-pet/
 ├── assets/
 │   ├── clips/                  # 内置演示精灵帧（含 attention 动画）
 │   ├── pets/default/           # 默认宠物定义
+│   ├── icon.icns               # macOS 图标（由 icon.png 经 scripts/make-icns.js 生成）
 │   ├── icon.ico                # Windows 图标
-│   └── icon.png                # 通用图标
+│   └── icon.png                # 通用图标（macOS 图标源）
+├── scripts/
+│   └── make-icns.js            # 跨平台生成 assets/icon.icns（npm run build:icns）
 ├── config/
 │   └── presets/default.json    # 默认 Clip → 状态映射（跨平台相对路径）
 ├── split2png.py                # 第 1 步：精灵表切帧
