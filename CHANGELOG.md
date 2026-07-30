@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1] macOS 稳定性 + 文档
+
+- **macOS 托盘图标修复**：`createTray()` 原先引用未打包的 `frames/` 图片，打包后托盘图标缺失；改为引用已打包的 `assets/icon.png`
+- **新增 macOS 图标**：`assets/icon.icns`（由 `scripts/make-icns.js` 跨平台生成，`npm run build:icns`），解除 `.dmg` 构建对 macOS `iconutil` 的依赖
+- **README 重写部署章节**：明确「项目是啥 + 怎么部署」三方式（下载安装包 / 源码运行 / 自打包），并注明 macOS dmg 只能在 Mac 上构建
+- 测试：`npm test` 9 套件 / 111 用例全绿
+
 ## [0.5.0] 一键导入角色
 
 ### 一键导入角色 ✨
